@@ -31,7 +31,7 @@ logger.setLevel(logging.DEBUG)
 FORMAT = '[%(asctime)-15s][%(levelname)s][%(funcName)s] %(message)s'
 logging.basicConfig(format=FORMAT)
 
-class jsonSocket(object):
+class JsonSocket(object):
 	def __init__(self, address='127.0.0.1', port=5489):
 		self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		self.conn = self.socket
@@ -78,16 +78,23 @@ class jsonSocket(object):
 	
 	def close(self):
 		logger.debug("closing main socket")
-		self.socket.close()
+		self._closeSocket()
 		if self.socket is not self.conn:
 			logger.debug("closing connection socket")
-			self.conn.close()
+			self._closeConnection()
+			
+	def _closeSocket(self):
+		self.socket.close()
+		
+	def _closeConnection(self):
+		self.conn.close()
 	
 	def _get_timeout(self):
 		return self._timeout
 	
 	def _set_timeout(self, timeout):
 		self._timeout = timeout
+		self.settimeout(timeout)
 		
 	def _get_address(self):
 		return self._address
@@ -106,9 +113,9 @@ class jsonSocket(object):
 	port = property(_get_port, _set_port,doc='read only property socket port')
 
 	
-class jsonServer(jsonSocket):
+class JsonServer(JsonSocket):
 	def __init__(self, address='127.0.0.1', port=5489):
-		super(jsonServer, self).__init__(address, port)
+		super(JsonServer, self).__init__(address, port)
 		self._bind()
 	
 	def _bind(self):
@@ -128,9 +135,9 @@ class jsonServer(jsonSocket):
 		logger.debug("connection accepted, conn socket (%s,%d)" % (addr[0],addr[1]))
 
 	
-class jsonClient(jsonSocket):
+class JsonClient(JsonSocket):
 	def __init__(self, address='127.0.0.1', port=5489):
-		super(jsonClient, self).__init__(address, port)
+		super(JsonClient, self).__init__(address, port)
 		
 	def connect(self):
 		for i in range(10):
@@ -150,8 +157,8 @@ if __name__ == "__main__":
 	import threading, time
 	
 	def serverThread():
-		logger.debug("starting jsonServer")
-		server = jsonServer()
+		logger.debug("starting JsonServer")
+		server = JsonServer()
 		server.acceptConnection()
 		while 1:
 			try:
@@ -171,9 +178,9 @@ if __name__ == "__main__":
 	t.start()
 	
 	time.sleep(2)
-	logger.debug("starting jsonClient")
+	logger.debug("starting JsonClient")
 	
-	client = jsonClient()
+	client = JsonClient()
 	client.connect()
 		
 	i = 0
