@@ -60,7 +60,6 @@ class JsonSocket(object):
 			dataTmp = self.conn.recv(size-len(data))
 			data += dataTmp
 			if dataTmp == '':
-				print data
 				raise RuntimeError("socket connection broken")
 		return data
 
