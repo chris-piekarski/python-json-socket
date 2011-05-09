@@ -3,6 +3,13 @@ import jsonSocket
 import threading
 import socket
 
+import logging
+
+logger = logging.getLogger("threadedServer")
+logger.setLevel(logging.DEBUG)
+FORMAT = '[%(asctime)-15s][%(levelname)s][%(funcName)s] %(message)s'
+logging.basicConfig(format=FORMAT)
+
 class ThreadedServer(threading.Thread, jsonSocket.JsonServer):
 	def __init__(self, **kwargs):
 		threading.Thread.__init__(self)
