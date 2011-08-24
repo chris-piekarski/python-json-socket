@@ -1,6 +1,7 @@
 This file is part of the jsonSocket module.
 Copyright (C) 2011 by 
 Christopher Piekarski <polo1065@gmail.com>
+PyPi: http://pypi.python.org/pypi/JsonSocket/
 
 The jsonSocket module is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
