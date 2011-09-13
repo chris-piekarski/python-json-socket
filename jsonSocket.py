@@ -93,7 +93,7 @@ class JsonSocket(object):
 	
 	def _set_timeout(self, timeout):
 		self._timeout = timeout
-		self.settimeout(timeout)
+		self.socket.settimeout(timeout)
 		
 	def _get_address(self):
 		return self._address
