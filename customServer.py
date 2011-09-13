@@ -4,9 +4,9 @@ __copyright__= " Copyright, 2011"
 __version__     = "1.0.0"
 
 
-import jsonSocket
+import threadedServer
 
-class MyServer(jsonSocket.ThreadedServer):
+class MyServer(threadedServer.ThreadedServer):
     def __init__(self):
         super(MyServer, self).__init__()
         self.timeout = 2.0
@@ -16,7 +16,7 @@ class MyServer(jsonSocket.ThreadedServer):
         if obj != '':
             if obj['message'] == "new connection":
                 pass
-    
+               
     
 if __name__ == "__main__":
     c = MyServer()
