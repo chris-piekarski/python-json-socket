@@ -35,10 +35,18 @@ def startTheClient(step):
 	world.jsonclient = jsonSocket.JsonClient()
 	world.jsonclient.connect()
 	
-@step('I send the object (\{.*\})')
-def sendTheObject(step, obj):
+@step('the client sends the object (\{.*\})')
+def clientSendsObject(step, obj):
 	world.jsonclient.sendObj(convert(obj))
 	
+@step('the server sends the object (\{.*\})')
+def serverSendsObject(step, obj):
+	world.jsonserver.sendObj(convert(obj))
+
+@step('the client sees a message (\{.*\})')
+def clientMessage(step, obj):
+	msg = world.jsonclient.readObj()
+	assert msg == convert(obj), "%d" % convert(obj)
 
 @step('I see a connection')
 def checkConnection(step):
