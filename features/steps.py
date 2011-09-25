@@ -1,10 +1,13 @@
 from lettuce import *
 import json
 import jsonSocket
-
 import threadedServer
+import logging
 
 convert = lambda s : json.loads(s)
+
+logger = logging.getLogger("jsonSocket")
+logger.setLevel(logging.CRITICAL)
 
 class MyServer(threadedServer.ThreadedServer):
 	def __init__(self):
@@ -29,6 +32,10 @@ def startTheServer(step):
 @step('I stop the server')
 def stopTheServer(step):
 	world.jsonserver.stop()
+	
+@step('I close the client')
+def stopTheCLient(step):
+	world.jsonclient.close()
 
 @step('I connect the client')
 def startTheClient(step):
