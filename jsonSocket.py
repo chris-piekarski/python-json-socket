@@ -25,10 +25,11 @@ import json
 import socket
 import struct
 import logging
+import time
 
 logger = logging.getLogger("jsonSocket")
 logger.setLevel(logging.DEBUG)
-FORMAT = '[%(asctime)-15s][%(levelname)s][%(funcName)s] %(message)s'
+FORMAT = '[%(asctime)-15s][%(levelname)s][%(module)s][%(funcName)s] %(message)s'
 logging.basicConfig(format=FORMAT)
 
 class JsonSocket(object):
@@ -76,16 +77,16 @@ class JsonSocket(object):
 		return json.loads(msg[0])
 	
 	def close(self):
-		logger.debug("closing main socket")
 		self._closeSocket()
 		if self.socket is not self.conn:
-			logger.debug("closing connection socket")
 			self._closeConnection()
 			
 	def _closeSocket(self):
+		logger.debug("closing main socket")
 		self.socket.close()
 		
 	def _closeConnection(self):
+		logger.debug("closing the connection socket")
 		self.conn.close()
 	
 	def _get_timeout(self):
