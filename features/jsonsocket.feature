@@ -14,3 +14,4 @@ Feature: Test Server
 	Scenario: Stop Server
 		Given I stop the server
 		Then I see a stopped server
+		Then I close the client
