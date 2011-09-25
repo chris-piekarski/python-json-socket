@@ -5,10 +5,7 @@ import socket
 
 import logging
 
-logger = logging.getLogger("threadedServer")
-logger.setLevel(logging.DEBUG)
-FORMAT = '[%(asctime)-15s][%(levelname)s][%(funcName)s] %(message)s'
-logging.basicConfig(format=FORMAT)
+logger = logging.getLogger("jsonSocket.threadedServer")
 
 class ThreadedServer(threading.Thread, jsonSocket.JsonServer):
 	def __init__(self, **kwargs):
@@ -42,11 +39,14 @@ class ThreadedServer(threading.Thread, jsonSocket.JsonServer):
 					logger.exception(e)
 					self._closeConnection()
 					break
+			self.close()
 	
 	def start(self):
 		self._isAlive = True
 		super(ThreadedServer, self).start()
+		logger.debug("Threaded Server has been started.")
 		
 	def stop(self):
 		""" The life of the dead is in the memory of the living """
 		self._isAlive = False
+		logger.debug("Threaded Server has been stopped.")
