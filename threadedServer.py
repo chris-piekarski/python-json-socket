@@ -42,6 +42,7 @@ class ThreadedServer(threading.Thread, jsonSocket.JsonServer):
 			self.close()
 	
 	def start(self):
+		""" The newly living know nothing of the dead """
 		self._isAlive = True
 		super(ThreadedServer, self).start()
 		logger.debug("Threaded Server has been started.")
@@ -50,3 +51,24 @@ class ThreadedServer(threading.Thread, jsonSocket.JsonServer):
 		""" The life of the dead is in the memory of the living """
 		self._isAlive = False
 		logger.debug("Threaded Server has been stopped.")
+
+class FactoryThreadedServer(ThreadedServer):
+	def __init__(self, **kwargs):
+		threading.Thread.__init__(self)
+		ThreadedServer.__init__(self, **kwargs)
+	
+	def run(self):
+		while self._isAlive:
+			try:
+				obj = self.readObj()
+				self._processMessage(obj)
+			except socket.timeout as e:
+				logger.debug("socket.timeout: %s" % e)
+				continue
+			except Exception as e:
+				logger.exception(e)
+				self._closeConnection()
+				break
+		self.close()
+		self.stop()
+		
