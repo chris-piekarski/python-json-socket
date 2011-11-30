@@ -16,7 +16,7 @@ class MyServer(threadedServer.ThreadedServer):
 		self.timeout = 2.0
 		logger.warning("MyServer class in customServer is for example purposes only.")
 	
-	def _processMessage(self, obj):
+	def _process_message(self, obj):
 		""" virtual method """
 		if obj != '':
 			if obj['message'] == "new connection":
@@ -28,7 +28,7 @@ class MyFactoryThread(threadedServer.FactoryServerThread):
 		super(MyFactoryThread, self).__init__()
 		self.timeout = 2.0
 	
-	def _processMessage(self, obj):
+	def _process_message(self, obj):
 		""" virtual method - Implementer must define protocol """
 		if obj != '':
 			if obj['message'] == "new connection":
