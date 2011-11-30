@@ -129,10 +129,14 @@ class JsonServer(JsonSocket):
 	
 	def acceptConnection(self):
 		self._listen()
-		
 		self.conn, addr = self._accept()
 		self.conn.settimeout(self.timeout)
 		logger.debug("connection accepted, conn socket (%s,%d)" % (addr[0],addr[1]))
+	
+	def _is_connected(self):
+		return True if not self.conn else False
+	
+	connected = property(_is_connected, doc="True if server is connected")
 
 	
 class JsonClient(JsonSocket):
