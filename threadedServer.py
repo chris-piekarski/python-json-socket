@@ -52,13 +52,18 @@ class ThreadedServer(threading.Thread, jsonSocket.JsonServer):
 		self._isAlive = False
 		logger.debug("Threaded Server has been stopped.")
 
-class FactoryThreadedServer(ThreadedServer):
+class FactoryServerThread(threading.Thread, jsonSocket.JsonSocket):
 	def __init__(self, **kwargs):
-		threading.Thread.__init__(self)
-		ThreadedServer.__init__(self, **kwargs)
+		threading.Thread.__init__(self, **kwargs)
+		jsonSocket.JsonSocket.__init__(self, **kwargs)
+	
+	def swapSocket(self, newSock):
+		del self.socket
+		self.socket = newSock
+		self.conn = self.socket
 	
 	def run(self):
-		while self._isAlive:
+		while self.isAlive():
 			try:
 				obj = self.readObj()
 				self._processMessage(obj)
@@ -66,9 +71,60 @@ class FactoryThreadedServer(ThreadedServer):
 				logger.debug("socket.timeout: %s" % e)
 				continue
 			except Exception as e:
-				logger.exception(e)
+				logger.info("client connection broken, closing socket")
 				self._closeConnection()
 				break
 		self.close()
-		self.stop()
 		
+		
+class FactoryServer(ThreadedServer):
+	def __init__(self, serverThread, **kwargs):
+		ThreadedServer.__init__(self, **kwargs)
+		if not issubclass(serverThread, FactoryServerThread):
+			raise TypeError("serverThread not of type", FactoryServerThread)
+		self._threadType = serverThread
+		self._threads = []
+	
+	def run(self):
+		while self._isAlive:
+			tmp = self._threadType()
+			self._purgeThreads()
+			while not self.connected:
+				try:
+					self.acceptConnection()
+				except socket.timeout as e:
+					logger.debug("socket.timeout: %s" % e)
+					continue
+				except Exception as e:
+					logger.exception(e)
+					continue
+				else:
+					tmp.swapSocket(self.conn)
+					tmp.start()
+					self._threads.append(tmp)
+					break
+		
+		self._waitToExit()		
+		self.close()
+			
+	def stopAll(self):
+		for t in self._threads:
+			if t.isAlive():
+				t.exit()
+				t.join()
+			
+	def _purgeThreads(self):
+		for n, t in enumerate(self._threads):
+			if not t.isAlive():
+				print n
+				print self._threads
+				self._threads.remove(n)
+			
+	def _waitToExit(self):
+		while _getNumOfActiveThreads():
+			time.sleep(0.2)
+			
+	def _getNumOfActiveThreads(self):
+		return len([True for x in self._threads if x.isAlive()])
+	
+	active = property(_getNumOfActiveThreads, doc="number of active threads")
