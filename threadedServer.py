@@ -2,7 +2,7 @@
 import jsonSocket
 import threading
 import socket
-
+import time
 import logging
 
 logger = logging.getLogger("jsonSocket.threadedServer")
@@ -89,7 +89,7 @@ class FactoryServer(ThreadedServer):
 		while self._isAlive:
 			tmp = self._threadType()
 			self._purgeThreads()
-			while not self.connected:
+			while not self.connected and self._isAlive:
 				try:
 					self.acceptConnection()
 				except socket.timeout as e:
@@ -106,7 +106,7 @@ class FactoryServer(ThreadedServer):
 		
 		self._waitToExit()		
 		self.close()
-			
+		
 	def stopAll(self):
 		for t in self._threads:
 			if t.isAlive():
@@ -121,7 +121,8 @@ class FactoryServer(ThreadedServer):
 				self._threads.remove(n)
 			
 	def _waitToExit(self):
-		while _getNumOfActiveThreads():
+		while self._getNumOfActiveThreads():
+			print self._getNumOfActiveThreads()
 			time.sleep(0.2)
 			
 	def _getNumOfActiveThreads(self):

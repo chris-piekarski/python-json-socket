@@ -29,7 +29,7 @@ class MyFactoryThread(threadedServer.FactoryServerThread):
 		self.timeout = 2.0
 	
 	def _processMessage(self, obj):
-		""" virtual method """
+		""" virtual method - Implementer must define protocol """
 		if obj != '':
 			if obj['message'] == "new connection":
 				logger.info("new connection.")
@@ -39,6 +39,7 @@ class MyFactoryThread(threadedServer.FactoryServerThread):
 if __name__ == "__main__":
 	import time
 	server = threadedServer.FactoryServer(MyFactoryThread)
+	server.timeout = 2.0
 	server.start()
 	
 	time.sleep(1)
@@ -50,8 +51,9 @@ if __name__ == "__main__":
 		client.sendObj({"message": "new connection"})
 		client.sendObj({"message": i })
 	
-	time.sleep(3)
+	time.sleep(2)
 	
 	for c in cPids:
 		c.close()
 	server.stop()
+	server.join()
