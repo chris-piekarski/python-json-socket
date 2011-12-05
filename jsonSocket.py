@@ -40,15 +40,15 @@ class JsonSocket(object):
 		self._address = address
 		self._port = port
 	
-	def sendObj(self, obj):
+	def send_obj(self, obj):
 		msg = json.dumps(obj)
 		if self.socket:
 			frmt = "=%ds" % len(msg)
-			packedMsg = struct.pack(frmt, msg)
-			packedHdr = struct.pack('=I', len(packedMsg))
+			packed_msg = struct.pack(frmt, msg)
+			packed_hdr = struct.pack('=I', len(packed_msg))
 			
-			self._send(packedHdr)
-			self._send(packedMsg)
+			self._send(packed_hdr)
+			self._send(packed_msg)
 			
 	def _send(self, msg):
 		sent = 0
@@ -58,34 +58,34 @@ class JsonSocket(object):
 	def _read(self, size):
 		data = ''
 		while len(data) < size:
-			dataTmp = self.conn.recv(size-len(data))
-			data += dataTmp
-			if dataTmp == '':
+			data_tmp = self.conn.recv(size-len(data))
+			data += data_tmp
+			if data_tmp == '':
 				raise RuntimeError("socket connection broken")
 		return data
 
-	def _msgLength(self):
+	def _msg_length(self):
 		d = self._read(4)
 		s = struct.unpack('=I', d)
 		return s[0]
 	
-	def readObj(self):
-		size = self._msgLength()
+	def read_obj(self):
+		size = self._msg_length()
 		data = self._read(size)
 		frmt = "=%ds" % size
-		msg = struct.unpack(frmt,data)
+		msg = struct.unpack(frmt, data)
 		return json.loads(msg[0])
 	
 	def close(self):
-		self._closeSocket()
+		self._close_socket()
 		if self.socket is not self.conn:
-			self._closeConnection()
+			self._close_connection()
 			
-	def _closeSocket(self):
+	def _close_socket(self):
 		logger.debug("closing main socket")
 		self.socket.close()
 		
-	def _closeConnection(self):
+	def _close_connection(self):
 		logger.debug("closing the connection socket")
 		self.conn.close()
 	
@@ -127,7 +127,7 @@ class JsonServer(JsonSocket):
 	def _accept(self):
 		return self.socket.accept()
 	
-	def acceptConnection(self):
+	def accept_connection(self):
 		self._listen()
 		self.conn, addr = self._accept()
 		self.conn.settimeout(self.timeout)
@@ -160,15 +160,15 @@ if __name__ == "__main__":
 	""" basic json echo server """
 	import threading, time
 	
-	def serverThread():
+	def server_thread():
 		logger.debug("starting JsonServer")
 		server = JsonServer()
-		server.acceptConnection()
+		server.accept_connection()
 		while 1:
 			try:
-				msg = server.readObj()
+				msg = server.read_obj()
 				logger.info("server received: %s" % msg)
-				server.sendObj(msg)
+				server.send_obj(msg)
 			except socket.timeout as e:
 				logger.debug("server socket.timeout: %s" % e)
 				continue
@@ -178,7 +178,7 @@ if __name__ == "__main__":
 			
 		server.close()
 			
-	t = threading.Timer(1,serverThread)
+	t = threading.Timer(1,server_thread)
 	t.start()
 	
 	time.sleep(2)
@@ -189,9 +189,9 @@ if __name__ == "__main__":
 		
 	i = 0
 	while i < 10:
-		client.sendObj({"i": i})
+		client.send_obj({"i": i})
 		try:
-			msg = client.readObj()
+			msg = client.read_obj()
 			logger.info("client received: %s" % msg)
 		except socket.timeout as e:
 			logger.debug("client socket.timeout: %s" % e)
