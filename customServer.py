@@ -56,8 +56,8 @@ if __name__ == "__main__":
 		client = jsonSocket.JsonClient()
 		cPids.append(client)
 		client.connect()
-		client.sendObj({"message": "new connection"})
-		client.sendObj({"message": i })
+		client.send_obj({"message": "new connection"})
+		client.send_obj({"message": i })
 	
 	time.sleep(2)
 	

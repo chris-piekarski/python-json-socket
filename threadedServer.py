@@ -13,14 +13,14 @@ class ThreadedServer(threading.Thread, jsonSocket.JsonServer):
 		jsonSocket.JsonServer.__init__(self)
 		self._isAlive = False
 		
-	def _processMessage(self, obj):
+	def _process_message(self, obj):
 		""" virtual method """
 		pass
 	
 	def run(self):
 		while self._isAlive:
 			try:
-				self.acceptConnection()
+				self.accept_connection()
 			except socket.timeout as e:
 				logger.debug("socket.timeout: %s" % e)
 				continue
@@ -30,14 +30,14 @@ class ThreadedServer(threading.Thread, jsonSocket.JsonServer):
 			
 			while self._isAlive:
 				try:
-					obj = self.readObj()
-					self._processMessage(obj)
+					obj = self.read_obj()
+					self._process_message(obj)
 				except socket.timeout as e:
 					logger.debug("socket.timeout: %s" % e)
 					continue
 				except Exception as e:
 					logger.exception(e)
-					self._closeConnection()
+					self._close_connection()
 					break
 			self.close()
 	
@@ -57,41 +57,41 @@ class FactoryServerThread(threading.Thread, jsonSocket.JsonSocket):
 		threading.Thread.__init__(self, **kwargs)
 		jsonSocket.JsonSocket.__init__(self, **kwargs)
 	
-	def swapSocket(self, newSock):
+	def swap_socket(self, new_sock):
 		del self.socket
-		self.socket = newSock
+		self.socket = new_sock
 		self.conn = self.socket
 	
 	def run(self):
 		while self.isAlive():
 			try:
-				obj = self.readObj()
-				self._processMessage(obj)
+				obj = self.read_obj()
+				self._process_message(obj)
 			except socket.timeout as e:
 				logger.debug("socket.timeout: %s" % e)
 				continue
 			except Exception as e:
 				logger.info("client connection broken, closing socket")
-				self._closeConnection()
+				self._close_connection()
 				break
 		self.close()
 		
 		
 class FactoryServer(ThreadedServer):
-	def __init__(self, serverThread, **kwargs):
+	def __init__(self, server_thread, **kwargs):
 		ThreadedServer.__init__(self, **kwargs)
-		if not issubclass(serverThread, FactoryServerThread):
+		if not issubclass(server_thread, FactoryServerThread):
 			raise TypeError("serverThread not of type", FactoryServerThread)
-		self._threadType = serverThread
+		self._thread_type = server_thread
 		self._threads = []
 	
 	def run(self):
 		while self._isAlive:
-			tmp = self._threadType()
-			self._purgeThreads()
+			tmp = self._thread_type()
+			self._purge_threads()
 			while not self.connected and self._isAlive:
 				try:
-					self.acceptConnection()
+					self.accept_connection()
 				except socket.timeout as e:
 					logger.debug("socket.timeout: %s" % e)
 					continue
@@ -99,33 +99,33 @@ class FactoryServer(ThreadedServer):
 					logger.exception(e)
 					continue
 				else:
-					tmp.swapSocket(self.conn)
+					tmp.swap_socket(self.conn)
 					tmp.start()
 					self._threads.append(tmp)
 					break
 		
-		self._waitToExit()		
+		self._wait_to_exit()		
 		self.close()
 		
-	def stopAll(self):
+	def stop_all(self):
 		for t in self._threads:
 			if t.isAlive():
 				t.exit()
 				t.join()
 			
-	def _purgeThreads(self):
+	def _purge_threads(self):
 		for n, t in enumerate(self._threads):
 			if not t.isAlive():
 				print n
 				print self._threads
 				self._threads.remove(n)
 			
-	def _waitToExit(self):
-		while self._getNumOfActiveThreads():
-			print self._getNumOfActiveThreads()
+	def _wait_to_exit(self):
+		while self._get_num_of_active_threads():
+			print self._get_num_of_active_threads()
 			time.sleep(0.2)
 			
-	def _getNumOfActiveThreads(self):
+	def _get_num_of_active_threads(self):
 		return len([True for x in self._threads if x.isAlive()])
 	
-	active = property(_getNumOfActiveThreads, doc="number of active threads")
+	active = property(_get_num_of_active_threads, doc="number of active threads")
