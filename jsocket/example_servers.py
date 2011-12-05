@@ -4,17 +4,17 @@ __copyright__= " Copyright, 2011"
 __version__	 = "1.0.0"
 
 """ This entire file is simply a set of examples. The most basic is to
-simply create a custom server by inheriting threadedServer.ThreadedServer
+simply create a custom server by inheriting tserver.ThreadedServer
 as shown below in MyServer.
 """
 
-import threadedServer
-import jsonSocket
+import tserver
+import jsocket
 import logging
 
-logger = logging.getLogger("jsonSocket.customServer")
+logger = logging.getLogger("jsocket.example_servers")
 
-class MyServer(threadedServer.ThreadedServer):
+class MyServer(tserver.ThreadedServer):
 	""" This is a basic example of a custom ThreadedServer. """
 	def __init__(self):
 		super(MyServer, self).__init__()
@@ -28,7 +28,7 @@ class MyServer(threadedServer.ThreadedServer):
 				logger.info("new connection.")
 			   
 
-class MyFactoryThread(threadedServer.FactoryServerThread):
+class MyFactoryThread(tserver.FactoryServerThread):
 	""" This is an example factory thread, which the server factory will
 		instantiate for each new connection.
 	"""
@@ -46,14 +46,14 @@ class MyFactoryThread(threadedServer.FactoryServerThread):
 	
 if __name__ == "__main__":
 	import time
-	server = threadedServer.FactoryServer(MyFactoryThread)
+	server = tserver.FactoryServer(MyFactoryThread)
 	server.timeout = 2.0
 	server.start()
 	
 	time.sleep(1)
 	cPids = []
 	for i in range(10):
-		client = jsonSocket.JsonClient()
+		client = jsocket.JsonClient()
 		cPids.append(client)
 		client.connect()
 		client.send_obj({"message": "new connection"})

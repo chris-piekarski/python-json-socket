@@ -15,5 +15,5 @@ setup(name='JsonSocket',
                    'Operating System :: OS Independent',
                    ],
       url='http://cpiekarski.com/2011/05/09/super-easy-python-json-client-server/',
-      py_modules=['jsonSocket', 'threadedServer','customServer'],
+      py_modules=['jsocket', 'tserver','example_servers'],
      )

@@ -1,16 +1,16 @@
 """ Example of a threaded server based on a JsonServer object in the jsonSocket module """
-import jsonSocket
+import jsocket
 import threading
 import socket
 import time
 import logging
 
-logger = logging.getLogger("jsonSocket.threadedServer")
+logger = logging.getLogger("jsocket.tserver")
 
-class ThreadedServer(threading.Thread, jsonSocket.JsonServer):
+class ThreadedServer(threading.Thread, jsocket.JsonServer):
 	def __init__(self, **kwargs):
 		threading.Thread.__init__(self)
-		jsonSocket.JsonServer.__init__(self)
+		jsocket.JsonServer.__init__(self)
 		self._isAlive = False
 		
 	def _process_message(self, obj):
@@ -52,10 +52,10 @@ class ThreadedServer(threading.Thread, jsonSocket.JsonServer):
 		self._isAlive = False
 		logger.debug("Threaded Server has been stopped.")
 
-class FactoryServerThread(threading.Thread, jsonSocket.JsonSocket):
+class FactoryServerThread(threading.Thread, jsocket.JsonSocket):
 	def __init__(self, **kwargs):
 		threading.Thread.__init__(self, **kwargs)
-		jsonSocket.JsonSocket.__init__(self, **kwargs)
+		jsocket.JsonSocket.__init__(self, **kwargs)
 	
 	def swap_socket(self, new_sock):
 		del self.socket
@@ -122,7 +122,6 @@ class FactoryServer(ThreadedServer):
 			
 	def _wait_to_exit(self):
 		while self._get_num_of_active_threads():
-			print self._get_num_of_active_threads()
 			time.sleep(0.2)
 			
 	def _get_num_of_active_threads(self):
