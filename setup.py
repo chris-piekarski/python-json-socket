@@ -3,10 +3,13 @@
 from distutils.core import setup
 
 setup(name='jsocket',
-      version='1.3',
+      version='1.4',
       description='Python JSON Server & Client',
       author='Christopher Piekarski',
-      author_email='polo1065@gmail.com',
+      author_email='chris@cpiekarski.com',
+      maintainer='Christopher Piekarski',
+      maintainer_email='chris@cpiekarski.com',
+      license='OSI Approved Apache Software License',
       keywords=['json','socket','server','client'],
       packages=['jsocket'],
       provides=['jsocket'],

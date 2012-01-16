@@ -26,9 +26,8 @@ class MyServer(tserver.ThreadedServer):
 		if obj != '':
 			if obj['message'] == "new connection":
 				logger.info("new connection.")
-			   
 
-class MyFactoryThread(tserver.FactoryServerThread):
+class MyFactoryThread(tserver.ServerFactoryThread):
 	""" This is an example factory thread, which the server factory will
 		instantiate for each new connection.
 	"""
@@ -46,7 +45,7 @@ class MyFactoryThread(tserver.FactoryServerThread):
 	
 if __name__ == "__main__":
 	import time
-	server = tserver.FactoryServer(MyFactoryThread)
+	server = tserver.ServerFactory(MyFactoryThread)
 	server.timeout = 2.0
 	server.start()
 	

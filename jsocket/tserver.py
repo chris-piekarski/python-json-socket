@@ -52,7 +52,7 @@ class ThreadedServer(threading.Thread, jsocket.JsonServer):
 		self._isAlive = False
 		logger.debug("Threaded Server has been stopped.")
 
-class FactoryServerThread(threading.Thread, jsocket.JsonSocket):
+class ServerFactoryThread(threading.Thread, jsocket.JsonSocket):
 	def __init__(self, **kwargs):
 		threading.Thread.__init__(self, **kwargs)
 		jsocket.JsonSocket.__init__(self, **kwargs)
@@ -77,11 +77,11 @@ class FactoryServerThread(threading.Thread, jsocket.JsonSocket):
 		self.close()
 		
 		
-class FactoryServer(ThreadedServer):
+class ServerFactory(ThreadedServer):
 	def __init__(self, server_thread, **kwargs):
 		ThreadedServer.__init__(self, **kwargs)
-		if not issubclass(server_thread, FactoryServerThread):
-			raise TypeError("serverThread not of type", FactoryServerThread)
+		if not issubclass(server_thread, ServerFactoryThread):
+			raise TypeError("serverThread not of type", ServerFactoryThread)
 		self._thread_type = server_thread
 		self._threads = []
 	
