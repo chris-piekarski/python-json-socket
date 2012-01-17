@@ -1,25 +1,26 @@
-""" contains a json object message passing server and client """
-
+""" @namespace jsocket_base
+	Contains JsonSocket, JsonServer and JsonClient implementations (json object message passing server and client).
+"""
 __author__	  = "Christopher Piekarski"
-__email__	   = "polo1065@gmail.com"
+__email__	   = "chris@cpiekarski.com"
 __copyright__= """
-	This file is part of the jsonSocket module.
+	This file is part of the jsocket package.
 	Copyright (C) 2011 by 
-	Christopher Piekarski <polo1065@gmail.com>
+	Christopher Piekarski <chris@cpiekarski.com>
 
-	The jsonSocket module is free software: you can redistribute it and/or modify
+	The jsocket_base module is free software: you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
 	the Free Software Foundation, either version 3 of the License, or
 	(at your option) any later version.
 
-	The jsonSocket module is distributed in the hope that it will be useful,
+	The jsocket package is distributed in the hope that it will be useful,
 	but WITHOUT ANY WARRANTY; without even the implied warranty of
 	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 	GNU General Public License for more details.
 
 	You should have received a copy of the GNU General Public License
-	along with jsonSocket module.  If not, see <http://www.gnu.org/licenses/>."""
-__version__	 = "1.0.0"
+	along with jsocket_base module.  If not, see <http://www.gnu.org/licenses/>."""
+__version__	 = "1.0.1"
 
 import json
 import socket
@@ -158,7 +159,7 @@ class JsonClient(JsonSocket):
 	
 if __name__ == "__main__":
 	""" basic json echo server """
-	import threading, time
+	import threading
 	
 	def server_thread():
 		logger.debug("starting JsonServer")

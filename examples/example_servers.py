@@ -1,21 +1,16 @@
-__author__	  = "Christopher Piekarski"
-__email__	   = "polo1065@gmail.com"
-__copyright__= " Copyright, 2011"
-__version__	 = "1.0.0"
-
-""" This entire file is simply a set of examples. The most basic is to
+"""
+This entire file is simply a set of examples. The most basic is to
 simply create a custom server by inheriting tserver.ThreadedServer
 as shown below in MyServer.
 """
 
-import tserver
 import jsocket
 import logging
 
 logger = logging.getLogger("jsocket.example_servers")
 
-class MyServer(tserver.ThreadedServer):
-	""" This is a basic example of a custom ThreadedServer. """
+class MyServer(jsocket.ThreadedServer):
+	"""	This is a basic example of a custom ThreadedServer.	"""
 	def __init__(self):
 		super(MyServer, self).__init__()
 		self.timeout = 2.0
@@ -27,8 +22,8 @@ class MyServer(tserver.ThreadedServer):
 			if obj['message'] == "new connection":
 				logger.info("new connection.")
 
-class MyFactoryThread(tserver.ServerFactoryThread):
-	""" This is an example factory thread, which the server factory will
+class MyFactoryThread(jsocket.ServerFactoryThread):
+	"""	This is an example factory thread, which the server factory will
 		instantiate for each new connection.
 	"""
 	def __init__(self):
@@ -45,7 +40,9 @@ class MyFactoryThread(tserver.ServerFactoryThread):
 	
 if __name__ == "__main__":
 	import time
-	server = tserver.ServerFactory(MyFactoryThread)
+	import jsocket
+	
+	server = jsocket.ServerFactory(MyFactoryThread)
 	server.timeout = 2.0
 	server.start()
 	
