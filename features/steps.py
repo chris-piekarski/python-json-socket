@@ -1,21 +1,20 @@
 from lettuce import *
 import json
-import jsonSocket
-import threadedServer
+import jsocket
 import logging
 
 convert = lambda s : json.loads(s)
 
-logger = logging.getLogger("jsonSocket")
+logger = logging.getLogger("jsocket")
 logger.setLevel(logging.CRITICAL)
 
-class MyServer(threadedServer.ThreadedServer):
+class MyServer(jsocket.ThreadedServer):
 	def __init__(self):
 		super(MyServer, self).__init__()
 		self.timeout = 2.0
 		self.isConnected = False 
 	
-	def _processMessage(self, obj):
+	def _process_message(self, obj):
 		""" virtual method """
 		if obj != '':
 			if obj['message'] == "new connection":
@@ -39,20 +38,20 @@ def stopTheCLient(step):
 
 @step('I connect the client')
 def startTheClient(step):
-	world.jsonclient = jsonSocket.JsonClient()
+	world.jsonclient = jsocket.JsonClient()
 	world.jsonclient.connect()
 	
 @step('the client sends the object (\{.*\})')
 def clientSendsObject(step, obj):
-	world.jsonclient.sendObj(convert(obj))
+	world.jsonclient.send_obj(convert(obj))
 	
 @step('the server sends the object (\{.*\})')
 def serverSendsObject(step, obj):
-	world.jsonserver.sendObj(convert(obj))
+	world.jsonserver.send_obj(convert(obj))
 
 @step('the client sees a message (\{.*\})')
 def clientMessage(step, obj):
-	msg = world.jsonclient.readObj()
+	msg = world.jsonclient.read_obj()
 	assert msg == convert(obj), "%d" % convert(obj)
 
 @step('I see a connection')
