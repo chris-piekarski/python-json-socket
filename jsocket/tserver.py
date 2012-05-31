@@ -157,11 +157,9 @@ class ServerFactory(ThreadedServer):
 				t.join()
 			
 	def _purge_threads(self):
-		for n, t in enumerate(self._threads):
+		for t in self._threads:
 			if not t.isAlive():
-				print n
-				print self._threads
-				self._threads.remove(n)
+				self._threads.remove(t)
 			
 	def _wait_to_exit(self):
 		while self._get_num_of_active_threads():
