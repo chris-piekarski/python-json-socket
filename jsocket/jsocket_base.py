@@ -46,7 +46,7 @@ class JsonSocket(object):
 		if self.socket:
 			frmt = "=%ds" % len(msg)
 			packed_msg = struct.pack(frmt, msg)
-			packed_hdr = struct.pack('=I', len(packed_msg))
+			packed_hdr = struct.pack('!I', len(packed_msg))
 			
 			self._send(packed_hdr)
 			self._send(packed_msg)
@@ -67,7 +67,7 @@ class JsonSocket(object):
 
 	def _msg_length(self):
 		d = self._read(4)
-		s = struct.unpack('=I', d)
+		s = struct.unpack('!I', d)
 		return s[0]
 	
 	def read_obj(self):
