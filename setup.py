@@ -3,7 +3,7 @@
 from distutils.core import setup
 
 setup(name='jsocket',
-      version='1.5',
+      version='1.6',
       description='Python JSON Server & Client',
       author='Christopher Piekarski',
       author_email='chris@cpiekarski.com',
