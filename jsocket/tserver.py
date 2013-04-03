@@ -34,7 +34,7 @@ logger = logging.getLogger("jsocket.tserver")
 class ThreadedServer(threading.Thread, jsocket_base.JsonServer):
 	def __init__(self, **kwargs):
 		threading.Thread.__init__(self)
-		jsocket_base.JsonServer.__init__(self)
+		jsocket_base.JsonServer.__init__(self, **kwargs)
 		self._isAlive = False
 		
 	def _process_message(self, obj):
