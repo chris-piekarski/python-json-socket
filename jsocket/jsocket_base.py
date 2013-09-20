@@ -72,7 +72,11 @@ class JsonSocket(object):
 	
 	def read_obj(self):
 		size = self._msg_length()
+		# we have received length of incomming json message
+		# so that we must wait for the json content even longer than timeout
+		self.socket.settimeout(None)
 		data = self._read(size)
+		self.socket.settimeout(self._timeout)
 		frmt = "=%ds" % size
 		msg = struct.unpack(frmt, data)
 		return json.loads(msg[0])
