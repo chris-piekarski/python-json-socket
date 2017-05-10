@@ -42,14 +42,14 @@ if __name__ == "__main__":
 	import time
 	import jsocket
 	
-	server = jsocket.ServerFactory(MyFactoryThread)
+	server = jsocket.ServerFactory(MyFactoryThread, address='127.0.0.1', port=5490)
 	server.timeout = 2.0
 	server.start()
 	
 	time.sleep(1)
 	cPids = []
 	for i in range(10):
-		client = jsocket.JsonClient()
+		client = jsocket.JsonClient(address='127.0.0.1', port=5490)
 		cPids.append(client)
 		client.connect()
 		client.send_obj({"message": "new connection"})
