@@ -60,7 +60,7 @@ class JsonSocket(object):
 		while len(data) < size:
 			data_tmp = self.conn.recv(size-len(data))
 			data += data_tmp
-			if data_tmp == '':
+			if data_tmp == b'':
 				raise RuntimeError("socket connection broken")
 		return data
 
@@ -131,7 +131,7 @@ class JsonServer(JsonSocket):
 		self._listen()
 		self.conn, addr = self._accept()
 		self.conn.settimeout(self.timeout)
-		logger.debug("connection accepted, conn socket (%s,%d)" % (addr[0],addr[1]))
+		logger.debug("connection accepted, conn socket (%s,%d,%d)" % (addr[0],addr[1],self.conn.gettimeout()))
 	
 	def _is_connected(self):
 		return True if not self.conn else False
