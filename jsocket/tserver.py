@@ -21,9 +21,9 @@ __copyright__= """
 
 	You should have received a copy of the GNU General Public License
 	along with tserver module.  If not, see <http://www.gnu.org/licenses/>."""
-__version__	 = "1.0.1"
+__version__	 = "1.0.2"
 
-import jsocket_base
+import jsocket.jsocket_base as jsocket_base
 import threading
 import socket
 import time
