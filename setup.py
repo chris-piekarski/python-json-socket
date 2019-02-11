@@ -19,6 +19,11 @@ setup(name='jsocket',
                    'License :: OSI Approved :: Apache Software License',
                    'Programming Language :: Python :: 2.7',
                    'Operating System :: OS Independent',
+                   'Development Status :: 5 - Production/Stable',
+                   'Topic :: System :: Networking',
+                   'Topic :: Software Development :: Libraries :: Application Frameworks',
+                   'Topic :: System :: Distributed Computing',
+                   'Topic :: System :: Hardware :: Symmetric Multi-processing',
                    ],
       url='http://cpiekarski.com/2011/05/09/super-easy-python-json-client-server/'
      )
