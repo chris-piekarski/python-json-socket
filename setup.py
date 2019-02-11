@@ -13,7 +13,7 @@ setup(name='jsocket',
       keywords=['json','socket','server','client'],
       packages=['jsocket'],
       provides=['jsocket'],
-      python_requires='==2.7.*'
+      python_requires='==2.7.*',
       classifiers=[
                    'Intended Audience :: Developers',
                    'License :: OSI Approved :: Apache Software License',
