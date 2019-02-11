@@ -2,7 +2,7 @@
 
 from distutils.core import setup
 
-setup(name='jsocket3',
+setup(name='jsocket',
       version='1.7',
       description='Python JSON Server & Client',
       author='Christopher Piekarski',
