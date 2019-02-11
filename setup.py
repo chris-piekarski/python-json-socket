@@ -13,6 +13,7 @@ setup(name='jsocket3',
       keywords=['json','socket','server','client'],
       packages=['jsocket'],
       provides=['jsocket'],
+      python_requires='>=3.5',
       classifiers=[
                    'Intended Audience :: Developers',
                    'License :: OSI Approved :: Apache Software License',
