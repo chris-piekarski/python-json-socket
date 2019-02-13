@@ -1,6 +1,6 @@
 
 The final Python 2 package version is 1.6.1  
-Python 2 PyPi: https://pypi.org/project/jsocket/1.6.1/
+Python 2 PyPi: https://pypi.org/project/jsocket/1.6.1/  
 Python 3 PyPi: https://pypi.org/project/jsocket/1.7/
 
 
