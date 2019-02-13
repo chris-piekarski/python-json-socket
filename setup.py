@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from distutils.core import setup
+from setuptools import setup, Extension
 
 setup(name='jsocket',
       version='1.6.1',
