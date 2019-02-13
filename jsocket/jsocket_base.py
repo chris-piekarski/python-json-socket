@@ -20,7 +20,7 @@ __copyright__= """
 
 	You should have received a copy of the GNU General Public License
 	along with jsocket_base module.  If not, see <http://www.gnu.org/licenses/>."""
-__version__	 = "1.0.1"
+__version__	 = "1.0.2"
 
 import json
 import socket
@@ -45,9 +45,8 @@ class JsonSocket(object):
 		msg = json.dumps(obj)
 		if self.socket:
 			frmt = "=%ds" % len(msg)
-			packed_msg = struct.pack(frmt, msg)
+			packed_msg = struct.pack(frmt, bytes(msg,'ascii'))
 			packed_hdr = struct.pack('!I', len(packed_msg))
-			
 			self._send(packed_hdr)
 			self._send(packed_msg)
 			
@@ -57,11 +56,11 @@ class JsonSocket(object):
 			sent += self.conn.send(msg[sent:])
 			
 	def _read(self, size):
-		data = ''
+		data = b''
 		while len(data) < size:
 			data_tmp = self.conn.recv(size-len(data))
 			data += data_tmp
-			if data_tmp == '':
+			if data_tmp == b'':
 				raise RuntimeError("socket connection broken")
 		return data
 
@@ -75,7 +74,7 @@ class JsonSocket(object):
 		data = self._read(size)
 		frmt = "=%ds" % size
 		msg = struct.unpack(frmt, data)
-		return json.loads(msg[0])
+		return json.loads(str(msg[0],'ascii'))
 	
 	def close(self):
 		self._close_socket()
@@ -132,7 +131,7 @@ class JsonServer(JsonSocket):
 		self._listen()
 		self.conn, addr = self._accept()
 		self.conn.settimeout(self.timeout)
-		logger.debug("connection accepted, conn socket (%s,%d)" % (addr[0],addr[1]))
+		logger.debug("connection accepted, conn socket (%s,%d,%d)" % (addr[0],addr[1],self.conn.gettimeout()))
 	
 	def _is_connected(self):
 		return True if not self.conn else False

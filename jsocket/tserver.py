@@ -21,9 +21,9 @@ __copyright__= """
 
 	You should have received a copy of the GNU General Public License
 	along with tserver module.  If not, see <http://www.gnu.org/licenses/>."""
-__version__	 = "1.0.1"
+__version__	 = "1.0.2"
 
-import jsocket_base
+import jsocket.jsocket_base as jsocket_base
 import threading
 import socket
 import time
@@ -94,6 +94,7 @@ class ServerFactoryThread(threading.Thread, jsocket_base.JsonSocket):
 	def __init__(self, **kwargs):
 		threading.Thread.__init__(self, **kwargs)
 		jsocket_base.JsonSocket.__init__(self, **kwargs)
+		self._isAlive = False
 	
 	def swap_socket(self, new_sock):
 		""" Swaps the existing socket with a new one. Useful for setting socket after a new connection.
@@ -106,7 +107,10 @@ class ServerFactoryThread(threading.Thread, jsocket_base.JsonSocket):
 		self.conn = self.socket
 	
 	def run(self):
-		while self.isAlive():
+		""" Should exit when client closes socket conn.
+		    Can force an exit with force_stop.
+		"""
+		while self._isAlive:
 			try:
 				obj = self.read_obj()
 				self._process_message(obj)
@@ -116,8 +120,29 @@ class ServerFactoryThread(threading.Thread, jsocket_base.JsonSocket):
 			except Exception as e:
 				logger.info("client connection broken, closing socket")
 				self._close_connection()
+				self._isAlive = False
 				break
 		self.close()
+
+	def start(self):
+		""" Starts the factory thread. 
+			The newly living know nothing of the dead
+
+			@retval None
+		"""
+		self._isAlive = True
+		super(ServerFactoryThread, self).start()
+		logger.debug("ServerFactoryThread has been started.")
+
+	def force_stop(self):
+		""" Force stops the factory thread.
+		    Should exit when client socket is closed under normal conditions.
+			The life of the dead is in the memory of the living.
+
+			@retval None
+		"""
+		self._isAlive = False
+		logger.debug("ServerFactoryThread has been stopped.")
 		
 		
 class ServerFactory(ThreadedServer):
@@ -147,13 +172,13 @@ class ServerFactory(ThreadedServer):
 					self._threads.append(tmp)
 					break
 		
-		self._wait_to_exit()		
+		self._wait_to_exit()
 		self.close()
 		
 	def stop_all(self):
 		for t in self._threads:
 			if t.isAlive():
-				t.exit()
+				t.force_stop()
 				t.join()
 			
 	def _purge_threads(self):
