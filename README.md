@@ -12,5 +12,5 @@ See the examples_servers.py file for an example of how to use the threaded serve
 Can also upload the python_json_socket_3.ipynb notebook to Google colab
 
 Unit Test:
-Lettuce unit test existins under features directory
+Lettuce unit test exists under features directory
 See that directories README for instructions on installing python3 lettuce fork
