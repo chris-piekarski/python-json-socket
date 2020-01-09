@@ -25,5 +25,5 @@ setup(name='jsocket',
                    'Topic :: System :: Distributed Computing',
                    'Topic :: System :: Hardware :: Symmetric Multi-processing',
                    ],
-      url='http://cpiekarski.com/2011/05/09/super-easy-python-json-client-server/'
+      url='https://cpiekarski.com/2012/01/25/python-json-client-server-redux/'
      )
