@@ -147,7 +147,7 @@ class ServerFactoryThread(threading.Thread, jsocket_base.JsonSocket):
 		
 class ServerFactory(ThreadedServer):
 	def __init__(self, server_thread, **kwargs):
-		ThreadedServer.__init__(self, **kwargs)
+		ThreadedServer.__init__(self, address=kwargs['address'], port=kwargs['port'])
 		if not issubclass(server_thread, ServerFactoryThread):
 			raise TypeError("serverThread not of type", ServerFactoryThread)
 		self._thread_type = server_thread
