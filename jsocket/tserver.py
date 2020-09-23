@@ -152,10 +152,13 @@ class ServerFactory(ThreadedServer):
 			raise TypeError("serverThread not of type", ServerFactoryThread)
 		self._thread_type = server_thread
 		self._threads = []
+		self._thread_args = kwargs
+		self._thread_args.pop('address', None)
+		self._thread_args.pop('port', None)
 	
 	def run(self):
 		while self._isAlive:
-			tmp = self._thread_type()
+			tmp = self._thread_type(**self._thread_args)
 			self._purge_threads()
 			while not self.connected and self._isAlive:
 				try:
