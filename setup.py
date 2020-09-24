@@ -3,7 +3,7 @@
 from setuptools import setup, Extension
 
 setup(name='jsocket',
-      version='1.8.1',
+      version='1.8.2',
       description='Python JSON Server & Client',
       author='Christopher Piekarski',
       author_email='chris@cpiekarski.com',
