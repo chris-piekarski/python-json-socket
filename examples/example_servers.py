@@ -7,7 +7,10 @@ as shown below in MyServer.
 import jsocket
 import logging
 
-logger = logging.getLogger("jsocket.example_servers")
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+FORMAT = '[%(asctime)-15s][%(levelname)s][%(module)s][%(funcName)s] %(message)s'
+logging.basicConfig(format=FORMAT)
 
 class MyServer(jsocket.ThreadedServer):
 	"""	This is a basic example of a custom ThreadedServer.	"""
@@ -52,8 +55,8 @@ if __name__ == "__main__":
 		client = jsocket.JsonClient(address='127.0.0.1', port=5490)
 		cPids.append(client)
 		client.connect()
-		client.send_obj({"message": "new connection"})
-		client.send_obj({"message": i })
+		client.send_obj({"message": "new connection", "test": i})
+		client.send_obj({"message": i, "key": 1 })
 	
 	time.sleep(2)
 	

@@ -29,9 +29,6 @@ import logging
 import time
 
 logger = logging.getLogger("jsocket")
-logger.setLevel(logging.DEBUG)
-FORMAT = '[%(asctime)-15s][%(levelname)s][%(module)s][%(funcName)s] %(message)s'
-logging.basicConfig(format=FORMAT)
 
 class JsonSocket(object):
 	def __init__(self, address='127.0.0.1', port=5489):
@@ -159,6 +156,9 @@ class JsonClient(JsonSocket):
 if __name__ == "__main__":
 	""" basic json echo server """
 	import threading
+	logger.setLevel(logging.DEBUG)
+	FORMAT = '[%(asctime)-15s][%(levelname)s][%(module)s][%(funcName)s] %(message)s'
+	logging.basicConfig(format=FORMAT)
 	
 	def server_thread():
 		logger.debug("starting JsonServer")
