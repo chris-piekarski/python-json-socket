@@ -180,13 +180,13 @@ class ServerFactory(ThreadedServer):
 		
 	def stop_all(self):
 		for t in self._threads:
-			if t.isAlive():
+			if t.is_alive():
 				t.force_stop()
 				t.join()
 			
 	def _purge_threads(self):
 		for t in self._threads:
-			if not t.isAlive():
+			if not t.is_alive():
 				self._threads.remove(t)
 			
 	def _wait_to_exit(self):
@@ -194,6 +194,6 @@ class ServerFactory(ThreadedServer):
 			time.sleep(0.2)
 			
 	def _get_num_of_active_threads(self):
-		return len([True for x in self._threads if x.isAlive()])
+		return len([True for x in self._threads if x.is_alive()])
 	
 	active = property(_get_num_of_active_threads, doc="number of active threads")
