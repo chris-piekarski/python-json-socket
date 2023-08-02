@@ -24,6 +24,7 @@ class MyServer(jsocket.ThreadedServer):
 		if obj != '':
 			if obj['message'] == "new connection":
 				logger.info("new connection.")
+				return {'message': 'welcome to jsocket server'}
 
 class MyFactoryThread(jsocket.ServerFactoryThread):
 	"""	This is an example factory thread, which the server factory will
@@ -37,7 +38,8 @@ class MyFactoryThread(jsocket.ServerFactoryThread):
 		""" virtual method - Implementer must define protocol """
 		if obj != '':
 			if obj['message'] == "new connection":
-				logger.info("new connection.")
+				logger.info("new connection...")
+				return {'message': 'welcome to jsocket server'}
 			else:
 				logger.info(obj)
 	
@@ -45,17 +47,20 @@ if __name__ == "__main__":
 	import time
 	import jsocket
 	
-	server = jsocket.ServerFactory(MyFactoryThread, address='127.0.0.1', port=5490)
+	server = jsocket.ServerFactory(MyFactoryThread, address='127.0.0.1', port=5491)
 	server.timeout = 2.0
 	server.start()
 	
 	time.sleep(1)
 	cPids = []
 	for i in range(10):
-		client = jsocket.JsonClient(address='127.0.0.1', port=5490)
+		client = jsocket.JsonClient(address='127.0.0.1', port=5491)
 		cPids.append(client)
 		client.connect()
 		client.send_obj({"message": "new connection", "test": i})
+		logger.info(client.read_obj())
+
+
 		client.send_obj({"message": i, "key": 1 })
 	
 	time.sleep(2)

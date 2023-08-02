@@ -20,7 +20,7 @@ __copyright__= """
 	GNU General Public License for more details.
 
 	You should have received a copy of the GNU General Public License
-	along with tserver module.  If not, see <http://www.gnu.org/licenses/>."""
+	along with tserver module.	If not, see <http://www.gnu.org/licenses/>."""
 __version__	 = "1.0.2"
 
 import jsocket.jsocket_base as jsocket_base
@@ -42,8 +42,8 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer):
 		
 			This method is called every time a JSON object is received from a client
 			
-			@param	obj	JSON "key: value" object received from client
-			@retval	None
+			@param	obj JSON "key: value" object received from client
+			@retval None or a response object
 		"""
 		pass
 	
@@ -61,7 +61,10 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer):
 			while self._isAlive:
 				try:
 					obj = self.read_obj()
-					self._process_message(obj)
+					resp_obj = self._process_message(obj)
+					if resp_obj is not None:
+						logger.debug("message has a response")
+						self.send_obj(resp_obj)
 				except socket.timeout as e:
 					logger.debug("socket.timeout: %s" % e)
 					continue
@@ -100,7 +103,7 @@ class ServerFactoryThread(threading.Thread, jsocket_base.JsonSocket):
 		""" Swaps the existing socket with a new one. Useful for setting socket after a new connection.
 		
 			@param	new_sock	socket to replace the existing default jsocket.JsonSocket object	
-			@retval	None
+			@retval None
 		"""
 		del self.socket
 		self.socket = new_sock
@@ -108,12 +111,15 @@ class ServerFactoryThread(threading.Thread, jsocket_base.JsonSocket):
 	
 	def run(self):
 		""" Should exit when client closes socket conn.
-		    Can force an exit with force_stop.
+			Can force an exit with force_stop.
 		"""
 		while self._isAlive:
 			try:
 				obj = self.read_obj()
-				self._process_message(obj)
+				resp_obj = self._process_message(obj)
+				if resp_obj is not None:
+					logger.debug("message has a response")
+					self.send_obj(resp_obj)
 			except socket.timeout as e:
 				logger.debug("socket.timeout: %s" % e)
 				continue
@@ -136,7 +142,7 @@ class ServerFactoryThread(threading.Thread, jsocket_base.JsonSocket):
 
 	def force_stop(self):
 		""" Force stops the factory thread.
-		    Should exit when client socket is closed under normal conditions.
+			Should exit when client socket is closed under normal conditions.
 			The life of the dead is in the memory of the living.
 
 			@retval None
