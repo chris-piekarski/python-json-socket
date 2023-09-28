@@ -67,5 +67,9 @@ if __name__ == "__main__":
 	
 	for c in cPids:
 		c.close()
+
+	time.sleep(5)
+	logger.warning("Stopping server")
 	server.stop()
 	server.join()
+	logger.warning("Example script exited")

@@ -72,7 +72,7 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer):
 					logger.exception(e)
 					self._close_connection()
 					break
-			self.close()
+			self._close_socket()
 	
 	def start(self):
 		""" Starts the threaded server. 
@@ -124,11 +124,10 @@ class ServerFactoryThread(threading.Thread, jsocket_base.JsonSocket):
 				logger.debug("socket.timeout: %s" % e)
 				continue
 			except Exception as e:
-				logger.info("client connection broken, closing socket")
-				self._close_connection()
+				logger.info("client connection broken, exit and close connection socket")
 				self._isAlive = False
 				break
-		self.close()
+		self._close_connection()
 
 	def start(self):
 		""" Starts the factory thread. 

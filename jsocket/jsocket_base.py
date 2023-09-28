@@ -31,10 +31,10 @@ import time
 logger = logging.getLogger("jsocket")
 
 class JsonSocket(object):
-	def __init__(self, address='127.0.0.1', port=5489):
+	def __init__(self, address='127.0.0.1', port=5489, timeout=2.0):
 		self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		self.conn = self.socket
-		self._timeout = None
+		self._timeout = timeout
 		self._address = address
 		self._port = port
 	
@@ -74,17 +74,21 @@ class JsonSocket(object):
 		return json.loads(str(msg[0],'ascii'))
 	
 	def close(self):
+		logger.debug("closing all connections")
+		self._close_connection()
 		self._close_socket()
-		if self.socket is not self.conn:
-			self._close_connection()
-			
+
 	def _close_socket(self):
 		logger.debug("closing main socket")
-		self.socket.close()
+		if self.socket.fileno() != -1:
+			self.socket.shutdown(socket.SHUT_RDWR)
+			self.socket.close()
 		
 	def _close_connection(self):
 		logger.debug("closing the connection socket")
-		self.conn.close()
+		if self.conn.fileno() != -1:
+			self.conn.shutdown(socket.SHUT_RDWR)
+			self.conn.close()
 	
 	def _get_timeout(self):
 		return self._timeout
@@ -152,7 +156,7 @@ class JsonClient(JsonSocket):
 			return True
 		return False
 
-	
+
 if __name__ == "__main__":
 	""" basic json echo server """
 	import threading
