@@ -1,0 +1,10 @@
+[MASTER]
+# Ignore BDD test steps; they rely on runtime-provided globals
+ignore=features
+
+[MESSAGES CONTROL]
+# No global disables; prefer fixing code issues
+disable=
+
+[FORMAT]
+max-line-length=120
