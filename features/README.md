@@ -1,14 +1,12 @@
-Main lettuce repo still doesn't support python3
-Use sgpy fork at https://github.com/sgpy/lettuce instead
+Python 3 BDD tests use Behave instead of Lettuce.
 
-Remove any existing python2/3 packages
-pip uninstall lettuce
-pip3 uninstall lettuce
+Setup
+- Install dependencies: `python -m pip install behave`
 
-Install fork version
-git clone https://github.com/sgpy/lettuce
-cd lettuce
-python3 setup.py install
+Run
+- From repo root: `PYTHONPATH=. behave -f progress2`
 
-cd python-json-socket
-lettuce
+Notes
+- Feature files live under `features/*.feature` (unchanged from Lettuce).
+- Step definitions are in `features/steps/steps.py`.
+- Behave will launch a simple server and client to validate JSON message flow.
