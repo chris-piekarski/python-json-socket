@@ -21,7 +21,7 @@ __copyright__= """
 
     You should have received a copy of the GNU General Public License
     along with tserver module.	If not, see <http://www.gnu.org/licenses/>."""
-__version__  = "1.0.3"
+__version__  = "1.0.2"
 
 import jsocket.jsocket_base as jsocket_base
 import threading
@@ -60,7 +60,12 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.AB
                 logger.debug("socket.timeout: %s" % e)
                 continue
             except Exception as e:
-                logger.exception(e)
+                # Avoid noisy error logs during normal shutdown/sequencing
+                if self._isAlive:
+                    logger.debug("accept_connection error: %s", e)
+                else:
+                    logger.debug("server stopping; accept loop exiting")
+                    break
                 continue
 
             while self._isAlive:
@@ -74,7 +79,12 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.AB
                     logger.debug("socket.timeout: %s" % e)
                     continue
                 except Exception as e:
-                    logger.exception(e)
+                    # Treat client disconnects as normal; keep logs at info/debug
+                    msg = str(e)
+                    if isinstance(e, RuntimeError) and 'socket connection broken' in msg:
+                        logger.info("client connection broken, closing connection")
+                    else:
+                        logger.debug("handler error: %s", e)
                     self._close_connection()
                     break
         # Ensure sockets are cleaned up when the server stops

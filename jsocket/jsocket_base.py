@@ -20,7 +20,7 @@ __copyright__= """
 
     You should have received a copy of the GNU General Public License
     along with jsocket_base module.  If not, see <http://www.gnu.org/licenses/>."""
-__version__  = "1.0.3"
+__version__  = "1.0.2"
 
 import json
 import socket
