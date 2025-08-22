@@ -1,7 +1,7 @@
 # Behave environment hooks for setup/teardown safety
 
-def after_all(context):
-    # Best-effort cleanup in case scenarios fail mid-run
+def after_scenario(context, scenario):
+    # Per-scenario cleanup for isolation
     server = getattr(context, 'jsonserver', None)
     client = getattr(context, 'jsonclient', None)
     try:
@@ -16,3 +16,6 @@ def after_all(context):
     except Exception:  # pragma: no cover
         pass
 
+def after_all(context):
+    # Redundant cleanup in case anything leaked between scenarios
+    after_scenario(context, None)
