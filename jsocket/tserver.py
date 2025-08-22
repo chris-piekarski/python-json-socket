@@ -21,7 +21,7 @@ __copyright__= """
 
     You should have received a copy of the GNU General Public License
     along with tserver module.	If not, see <http://www.gnu.org/licenses/>."""
-__version__  = "1.0.2"
+__version__  = "1.0.3"
 
 import jsocket.jsocket_base as jsocket_base
 import threading
@@ -77,7 +77,11 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.AB
                     logger.exception(e)
                     self._close_connection()
                     break
-            self._close_socket()
+        # Ensure sockets are cleaned up when the server stops
+        try:
+            self.close()
+        except Exception:
+            pass
 
     def start(self):
         """ Starts the threaded server. 
