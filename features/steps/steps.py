@@ -1,3 +1,10 @@
+"""Behave step implementations for json socket scenarios.
+
+Note: Pylint is unaware of Behave's decorator callables, so we disable the
+"not-callable" check for this file.
+"""
+# pylint: disable=not-callable, missing-function-docstring
+
 import json
 import logging
 import time
@@ -12,8 +19,10 @@ use_step_matcher("re")
 
 
 class MyServer(jsocket.ThreadedServer):
+    """Simple echo server used by Behave scenarios."""
+
     def __init__(self, **kwargs):
-        super(MyServer, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         self.timeout = 2.0
 
     def _process_message(self, obj):
@@ -60,7 +69,7 @@ def server_sends_object(context, obj):
 def client_sees_message(context, obj):
     expected = json.loads(obj)
     msg = context.jsonclient.read_obj()
-    assert msg == expected, "%s" % expected
+    assert msg == expected, f"{expected}"
 
 
 @then(r"within (\d+(?:\.\d+)?) seconds the server is connected")
@@ -138,6 +147,8 @@ def client_attempts_read_with_timeout(context, seconds):
 def client_read_fails(context):
     e = getattr(context, 'client_read_exception', None)
     # Either a socket.timeout or a RuntimeError("socket connection broken") is acceptable
-    assert e is not None, "client read unexpectedly succeeded: %r" % getattr(context, 'client_read_value', None)
-    acceptable = isinstance(e, socket.timeout) or (isinstance(e, RuntimeError) and 'socket connection broken' in str(e))
+    assert e is not None, f"client read unexpectedly succeeded: {getattr(context, 'client_read_value', None)!r}"
+    acceptable = isinstance(e, socket.timeout) or (
+        isinstance(e, RuntimeError) and 'socket connection broken' in str(e)
+    )
     assert acceptable, f"unexpected exception type: {type(e)} {e}"
