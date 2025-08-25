@@ -14,6 +14,7 @@ setup(name='jsocket',
       packages=['jsocket'],
       provides=['jsocket'],
       python_requires='>=3.8',
+      license_files=['LICENSE'],
       classifiers=[
                    'Intended Audience :: Developers',
                    'License :: OSI Approved :: Apache Software License',
