@@ -54,6 +54,10 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.AB
         return None
 
     def run(self):
+        # Ensure the run loop is active even when run() is invoked directly
+        # (tests may call run() in a separate thread without invoking start()).
+        if not self._is_alive:
+            self._is_alive = True
         while self._is_alive:
             try:
                 self.accept_connection()
@@ -199,6 +203,10 @@ class ServerFactory(ThreadedServer):
         return None
 
     def run(self):
+        # Ensure the run loop is active even when run() is invoked directly
+        # (tests may call run() in a separate thread without invoking start()).
+        if not self._is_alive:
+            self._is_alive = True
         while self._is_alive:
             tmp = self._thread_type(**self._thread_args)
             self._purge_threads()
