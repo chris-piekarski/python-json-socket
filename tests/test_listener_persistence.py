@@ -1,11 +1,13 @@
+"""Pytest: server should accept multiple clients sequentially without restart."""
+
 import time
 import pytest
-import socket
 
 import jsocket
 
 
 class EchoServer(jsocket.ThreadedServer):
+    """Echo server used to verify listener persistence."""
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.timeout = 1.0
@@ -53,4 +55,3 @@ def test_server_accepts_multiple_clients_sequentially():
     finally:
         server.stop()
         server.join(timeout=3)
-

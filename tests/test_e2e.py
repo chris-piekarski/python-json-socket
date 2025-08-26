@@ -1,20 +1,22 @@
+"""Pytest end-to-end tests for basic client/server echo."""
+
 import time
-import socket
 import pytest
 
 import jsocket
 
 
 class EchoServer(jsocket.ThreadedServer):
+    """Minimal echo server for tests."""
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.timeout = 2.0
-        self.isConnected = False
+        self.is_connected = False
 
     def _process_message(self, obj):
         if obj != '':
             if obj.get('message') == 'new connection':
-                self.isConnected = True
+                self.is_connected = True
             # echo back if present
             if 'echo' in obj:
                 return obj
@@ -23,6 +25,7 @@ class EchoServer(jsocket.ThreadedServer):
 
 @pytest.mark.timeout(10)
 def test_end_to_end_echo_and_connection():
+    """Server accepts a connection and echoes payloads end-to-end."""
     try:
         server = EchoServer(address='127.0.0.1', port=0)
     except PermissionError as e:
@@ -39,7 +42,7 @@ def test_end_to_end_echo_and_connection():
         # Signal connection and wait briefly for server to process
         client.send_obj({"message": "new connection"})
         time.sleep(0.2)
-        assert server.isConnected is True
+        assert server.is_connected is True
 
         # Echo round-trip
         payload = {"echo": "hello", "i": 1}

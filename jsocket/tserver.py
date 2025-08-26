@@ -22,22 +22,24 @@ __copyright__= """
 """
 __version__  = "1.0.3"
 
-import jsocket.jsocket_base as jsocket_base
 import threading
 import socket
 import time
 import logging
 import abc
 from typing import Optional
+from jsocket import jsocket_base
 
 logger = logging.getLogger("jsocket.tserver")
 
 
 class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.ABCMeta):
+    """Single-threaded server that accepts one connection and processes messages in its thread."""
+
     def __init__(self, **kwargs):
         threading.Thread.__init__(self)
         jsocket_base.JsonServer.__init__(self, **kwargs)
-        self._isAlive = False
+        self._is_alive = False
 
     @abc.abstractmethod
     def _process_message(self, obj) -> Optional[dict]:
@@ -52,22 +54,26 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.AB
         return None
 
     def run(self):
-        while self._isAlive:
+        # Ensure the run loop is active even when run() is invoked directly
+        # (tests may call run() in a separate thread without invoking start()).
+        if not self._is_alive:
+            self._is_alive = True
+        while self._is_alive:
             try:
                 self.accept_connection()
             except socket.timeout as e:
-                logger.debug("socket.timeout: %s" % e)
+                logger.debug("socket.timeout: %s", e)
                 continue
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-exception-caught
                 # Avoid noisy error logs during normal shutdown/sequencing
-                if self._isAlive:
+                if self._is_alive:
                     logger.debug("accept_connection error: %s", e)
                 else:
                     logger.debug("server stopping; accept loop exiting")
                     break
                 continue
 
-            while self._isAlive:
+            while self._is_alive:
                 try:
                     obj = self.read_obj()
                     resp_obj = self._process_message(obj)
@@ -75,9 +81,9 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.AB
                         logger.debug("message has a response")
                         self.send_obj(resp_obj)
                 except socket.timeout as e:
-                    logger.debug("socket.timeout: %s" % e)
+                    logger.debug("socket.timeout: %s", e)
                     continue
-                except Exception as e:
+                except Exception as e:  # pylint: disable=broad-exception-caught
                     # Treat client disconnects as normal; keep logs at info/debug
                     msg = str(e)
                     if isinstance(e, RuntimeError) and 'socket connection broken' in msg:
@@ -89,7 +95,7 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.AB
         # Ensure sockets are cleaned up when the server stops
         try:
             self.close()
-        except Exception:
+        except OSError:
             pass
 
     def start(self):
@@ -98,8 +104,8 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.AB
             
             @retval None 
         """
-        self._isAlive = True
-        super(ThreadedServer, self).start()
+        self._is_alive = True
+        super().start()
         logger.debug("Threaded Server has been started.")
 
     def stop(self):
@@ -108,15 +114,17 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.AB
 
             @retval None 
         """
-        self._isAlive = False
+        self._is_alive = False
         logger.debug("Threaded Server has been stopped.")
 
 
 class ServerFactoryThread(threading.Thread, jsocket_base.JsonSocket, metaclass=abc.ABCMeta):
+    """Per-connection worker thread used by ServerFactory."""
+
     def __init__(self, **kwargs):
         threading.Thread.__init__(self, **kwargs)
         jsocket_base.JsonSocket.__init__(self, **kwargs)
-        self._isAlive = False
+        self._is_alive = False
 
     def swap_socket(self, new_sock):
         """ Swaps the existing socket with a new one. Useful for setting socket after a new connection.
@@ -124,7 +132,6 @@ class ServerFactoryThread(threading.Thread, jsocket_base.JsonSocket, metaclass=a
             @param new_sock socket to replace the existing default jsocket.JsonSocket object 
             @retval None
         """
-        del self.socket
         self.socket = new_sock
         self.conn = self.socket
 
@@ -132,7 +139,7 @@ class ServerFactoryThread(threading.Thread, jsocket_base.JsonSocket, metaclass=a
         """ Should exit when client closes socket conn.
             Can force an exit with force_stop.
         """
-        while self._isAlive:
+        while self._is_alive:
             try:
                 obj = self.read_obj()
                 resp_obj = self._process_message(obj)
@@ -140,11 +147,11 @@ class ServerFactoryThread(threading.Thread, jsocket_base.JsonSocket, metaclass=a
                     logger.debug("message has a response")
                     self.send_obj(resp_obj)
             except socket.timeout as e:
-                logger.debug("socket.timeout: %s" % e)
+                logger.debug("socket.timeout: %s", e)
                 continue
-            except Exception as e:
-                logger.info("client connection broken, exit and close connection socket")
-                self._isAlive = False
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                logger.info("client connection broken, closing connection: %s", e)
+                self._is_alive = False
                 break
         self._close_connection()
 
@@ -164,8 +171,8 @@ class ServerFactoryThread(threading.Thread, jsocket_base.JsonSocket, metaclass=a
 
             @retval None
         """
-        self._isAlive = True
-        super(ServerFactoryThread, self).start()
+        self._is_alive = True
+        super().start()
         logger.debug("ServerFactoryThread has been started.")
 
     def force_stop(self):
@@ -175,11 +182,12 @@ class ServerFactoryThread(threading.Thread, jsocket_base.JsonSocket, metaclass=a
 
             @retval None
         """
-        self._isAlive = False
+        self._is_alive = False
         logger.debug("ServerFactoryThread has been stopped.")
 
 
 class ServerFactory(ThreadedServer):
+    """Accepts clients and spawns a ServerFactoryThread per connection."""
     def __init__(self, server_thread, **kwargs):
         ThreadedServer.__init__(self, address=kwargs['address'], port=kwargs['port'])
         if not issubclass(server_thread, ServerFactoryThread):
@@ -195,20 +203,28 @@ class ServerFactory(ThreadedServer):
         return None
 
     def run(self):
-        while self._isAlive:
+        # Ensure the run loop is active even when run() is invoked directly
+        # (tests may call run() in a separate thread without invoking start()).
+        if not self._is_alive:
+            self._is_alive = True
+        while self._is_alive:
             tmp = self._thread_type(**self._thread_args)
             self._purge_threads()
-            while not self.connected and self._isAlive:
+            while not self.connected and self._is_alive:
                 try:
                     self.accept_connection()
                 except socket.timeout as e:
-                    logger.debug("socket.timeout: %s" % e)
+                    logger.debug("socket.timeout: %s", e)
                     continue
-                except Exception as e:
-                    logger.exception(e)
+                except Exception as e:  # pylint: disable=broad-exception-caught
+                    logger.exception("accept error: %s", e)
                     continue
                 else:
-                    tmp.swap_socket(self.conn)
+                    # Hand off the accepted connection to the worker
+                    accepted_conn = self.conn
+                    # Reset server connection reference so we can accept again
+                    self._reset_connection_ref()
+                    tmp.swap_socket(accepted_conn)
                     tmp.start()
                     self._threads.append(tmp)
                     break
@@ -223,9 +239,17 @@ class ServerFactory(ThreadedServer):
                 t.join()
 
     def _purge_threads(self):
-        for t in self._threads:
-            if not t.is_alive():
-                self._threads.remove(t)
+        # Rebuild list to avoid mutating while iterating
+        self._threads = [t for t in self._threads if t.is_alive()]
+
+    def stop(self):
+        # Stop accepting and stop all workers
+        self._is_alive = False
+        try:
+            self.stop_all()
+        except Exception:  # pylint: disable=broad-exception-caught
+            pass
+        logger.debug("ServerFactory has been stopped.")
 
     def _wait_to_exit(self):
         while self._get_num_of_active_threads():

@@ -1,0 +1,13 @@
+[run]
+branch = True
+source = jsocket
+omit =
+    */__init__.py
+
+[report]
+show_missing = True
+skip_covered = True
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.
+
