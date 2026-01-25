@@ -33,6 +33,14 @@ from jsocket import jsocket_base
 logger = logging.getLogger("jsocket.tserver")
 
 
+def _response_summary(resp_obj) -> str:
+    if isinstance(resp_obj, dict):
+        return f"type=dict keys={len(resp_obj)}"
+    if isinstance(resp_obj, (list, tuple)):
+        return f"type={type(resp_obj).__name__} items={len(resp_obj)}"
+    return f"type={type(resp_obj).__name__}"
+
+
 class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.ABCMeta):
     """Single-threaded server that accepts one connection and processes messages in its thread."""
 
@@ -53,45 +61,54 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.AB
         # Return None in the base class to satisfy linters; subclasses should override.
         return None
 
+    def _accept_client(self) -> bool:
+        """Accept an incoming connection; return True when a client connects."""
+        try:
+            self.accept_connection()
+        except socket.timeout as e:
+            logger.debug("accept timeout on %s:%s: %s", self.address, self.port, e)
+            return False
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            # Avoid noisy error logs during normal shutdown/sequencing
+            if self._is_alive:
+                logger.debug("accept error on %s:%s: %s", self.address, self.port, e)
+                return False
+            logger.debug("server stopping; accept loop exiting (%s:%s)", self.address, self.port)
+            self._is_alive = False
+            return False
+        return True
+
+    def _handle_client_messages(self):
+        """Read, process, and respond to client messages until disconnect."""
+        while self._is_alive:
+            try:
+                obj = self.read_obj()
+                resp_obj = self._process_message(obj)
+                if resp_obj is not None:
+                    logger.debug("sending response (%s)", _response_summary(resp_obj))
+                    self.send_obj(resp_obj)
+            except socket.timeout as e:
+                logger.debug("read timeout waiting for client data: %s", e)
+                continue
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                # Treat client disconnects as normal; keep logs at info/debug
+                msg = str(e)
+                if isinstance(e, RuntimeError) and 'socket connection broken' in msg:
+                    logger.info("client connection broken, closing connection")
+                else:
+                    logger.debug("handler error (%s): %s", type(e).__name__, e)
+                self._close_connection()
+                break
+
     def run(self):
         # Ensure the run loop is active even when run() is invoked directly
         # (tests may call run() in a separate thread without invoking start()).
         if not self._is_alive:
             self._is_alive = True
         while self._is_alive:
-            try:
-                self.accept_connection()
-            except socket.timeout as e:
-                logger.debug("socket.timeout: %s", e)
+            if not self._accept_client():
                 continue
-            except Exception as e:  # pylint: disable=broad-exception-caught
-                # Avoid noisy error logs during normal shutdown/sequencing
-                if self._is_alive:
-                    logger.debug("accept_connection error: %s", e)
-                else:
-                    logger.debug("server stopping; accept loop exiting")
-                    break
-                continue
-
-            while self._is_alive:
-                try:
-                    obj = self.read_obj()
-                    resp_obj = self._process_message(obj)
-                    if resp_obj is not None:
-                        logger.debug("message has a response")
-                        self.send_obj(resp_obj)
-                except socket.timeout as e:
-                    logger.debug("socket.timeout: %s", e)
-                    continue
-                except Exception as e:  # pylint: disable=broad-exception-caught
-                    # Treat client disconnects as normal; keep logs at info/debug
-                    msg = str(e)
-                    if isinstance(e, RuntimeError) and 'socket connection broken' in msg:
-                        logger.info("client connection broken, closing connection")
-                    else:
-                        logger.debug("handler error: %s", e)
-                    self._close_connection()
-                    break
+            self._handle_client_messages()
         # Ensure sockets are cleaned up when the server stops
         try:
             self.close()
@@ -106,7 +123,7 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.AB
         """
         self._is_alive = True
         super().start()
-        logger.debug("Threaded Server has been started.")
+        logger.debug("Threaded Server started on %s:%s", self.address, self.port)
 
     def stop(self):
         """ Stops the threaded server.
@@ -115,7 +132,7 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.AB
             @retval None 
         """
         self._is_alive = False
-        logger.debug("Threaded Server has been stopped.")
+        logger.debug("Threaded Server stopped on %s:%s", self.address, self.port)
 
 
 class ServerFactoryThread(threading.Thread, jsocket_base.JsonSocket, metaclass=abc.ABCMeta):
@@ -123,6 +140,8 @@ class ServerFactoryThread(threading.Thread, jsocket_base.JsonSocket, metaclass=a
 
     def __init__(self, **kwargs):
         threading.Thread.__init__(self, **kwargs)
+        self.socket = None
+        self.conn = None
         jsocket_base.JsonSocket.__init__(self, **kwargs)
         self._is_alive = False
 
@@ -144,16 +163,18 @@ class ServerFactoryThread(threading.Thread, jsocket_base.JsonSocket, metaclass=a
                 obj = self.read_obj()
                 resp_obj = self._process_message(obj)
                 if resp_obj is not None:
-                    logger.debug("message has a response")
+                    logger.debug("sending response (%s)", _response_summary(resp_obj))
                     self.send_obj(resp_obj)
             except socket.timeout as e:
-                logger.debug("socket.timeout: %s", e)
+                logger.debug("worker read timeout waiting for data: %s", e)
                 continue
             except Exception as e:  # pylint: disable=broad-exception-caught
                 logger.info("client connection broken, closing connection: %s", e)
                 self._is_alive = False
                 break
         self._close_connection()
+        if hasattr(self, "socket"):
+            self._close_socket()
 
     @abc.abstractmethod
     def _process_message(self, obj) -> Optional[dict]:
@@ -173,7 +194,7 @@ class ServerFactoryThread(threading.Thread, jsocket_base.JsonSocket, metaclass=a
         """
         self._is_alive = True
         super().start()
-        logger.debug("ServerFactoryThread has been started.")
+        logger.debug("ServerFactoryThread started (%s)", self.name)
 
     def force_stop(self):
         """ Force stops the factory thread.
@@ -183,7 +204,7 @@ class ServerFactoryThread(threading.Thread, jsocket_base.JsonSocket, metaclass=a
             @retval None
         """
         self._is_alive = False
-        logger.debug("ServerFactoryThread has been stopped.")
+        logger.debug("ServerFactoryThread stopped (%s)", self.name)
 
 
 class ServerFactory(ThreadedServer):
@@ -214,7 +235,7 @@ class ServerFactory(ThreadedServer):
                 try:
                     self.accept_connection()
                 except socket.timeout as e:
-                    logger.debug("socket.timeout: %s", e)
+                    logger.debug("factory accept timeout on %s:%s: %s", self.address, self.port, e)
                     continue
                 except Exception as e:  # pylint: disable=broad-exception-caught
                     logger.exception("accept error: %s", e)
@@ -233,6 +254,7 @@ class ServerFactory(ThreadedServer):
         self.close()
 
     def stop_all(self):
+        """Stop and join all active worker threads."""
         for t in self._threads:
             if t.is_alive():
                 t.force_stop()
@@ -249,9 +271,10 @@ class ServerFactory(ThreadedServer):
             self.stop_all()
         except Exception:  # pylint: disable=broad-exception-caught
             pass
-        logger.debug("ServerFactory has been stopped.")
+        logger.debug("ServerFactory stopped on %s:%s", self.address, self.port)
 
     def _wait_to_exit(self):
+        """Block until all worker threads have finished."""
         while self._get_num_of_active_threads():
             time.sleep(0.2)
 

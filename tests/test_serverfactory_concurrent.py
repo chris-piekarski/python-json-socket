@@ -56,10 +56,10 @@ def test_serverfactory_handles_two_clients_concurrently():
         c1.close()
         c2.close()
     finally:
-        try:
-            if hasattr(server, 'stop_all'):
+        if hasattr(server, 'stop_all'):
+            try:
                 server.stop_all()
-        except Exception:
-            pass
+            except RuntimeError:
+                pass
         server.stop()
         server.join(timeout=3)

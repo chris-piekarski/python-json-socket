@@ -65,11 +65,11 @@ def test_serverfactory_accepts_multiple_active_clients_concurrently():
         c1.close()
     finally:
         # Stop the server thread and join
-        try:
-            # Ensure any worker threads are stopped to avoid hangs
-            if hasattr(server, 'stop_all'):
+        # Ensure any worker threads are stopped to avoid hangs
+        if hasattr(server, 'stop_all'):
+            try:
                 server.stop_all()
-        except Exception:
-            pass
+            except RuntimeError:
+                pass
         server.stop()
         server.join(timeout=3)

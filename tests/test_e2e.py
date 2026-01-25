@@ -31,6 +31,7 @@ def test_end_to_end_echo_and_connection():
     except PermissionError as e:
         pytest.skip(f"Socket creation blocked: {e}")
 
+    client = None
     # Discover the ephemeral port chosen by the OS
     _, port = server.socket.getsockname()
     server.start()
@@ -54,9 +55,10 @@ def test_end_to_end_echo_and_connection():
         assert echoed == payload
     finally:
         # Cleanup
-        try:
-            client.close()
-        except Exception:
-            pass
+        if client is not None:
+            try:
+                client.close()
+            except OSError:
+                pass
         server.stop()
         server.join(timeout=3)

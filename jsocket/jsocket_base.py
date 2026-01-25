@@ -30,6 +30,13 @@ import time
 logger = logging.getLogger("jsocket")
 
 
+def _socket_fileno(sock):
+    try:
+        return sock.fileno()
+    except Exception:  # pylint: disable=broad-exception-caught
+        return None
+
+
 class JsonSocket:
     """Lightweight JSON-over-TCP socket wrapper with length-prefixed framing."""
 
@@ -85,13 +92,17 @@ class JsonSocket:
 
     def close(self):
         """Close active connection and the listening socket if open."""
-        logger.debug("closing all connections")
+        logger.debug(
+            "closing sockets (socket fd=%s, conn fd=%s)",
+            _socket_fileno(self.socket),
+            _socket_fileno(self.conn),
+        )
         self._close_connection()
         self._close_socket()
 
     def _close_socket(self):
         """Best-effort shutdown and close of the main socket."""
-        logger.debug("closing main socket")
+        logger.debug("closing main socket (fd=%s)", _socket_fileno(self.socket))
         try:
             if self.socket and self.socket.fileno() != -1:
                 try:
@@ -107,7 +118,7 @@ class JsonSocket:
 
     def _close_connection(self):
         """Best-effort shutdown and close of the accepted connection socket."""
-        logger.debug("closing the connection socket")
+        logger.debug("closing connection socket (fd=%s)", _socket_fileno(self.conn))
         try:
             if self.conn and self.conn is not self.socket and self.conn.fileno() != -1:
                 try:
@@ -134,17 +145,17 @@ class JsonSocket:
         """Return the configured bind address."""
         return self._address
 
-    def _set_address(self, address):
+    def _set_address(self, _address):
         """No-op: address is read-only after initialization."""
-        pass
+        return None
 
     def _get_port(self):
         """Return the configured bind port."""
         return self._port
 
-    def _set_port(self, port):
+    def _set_port(self, _port):
         """No-op: port is read-only after initialization."""
-        pass
+        return None
 
     timeout = property(_get_timeout, _set_timeout, doc='Get/set the socket timeout')
     address = property(_get_address, _set_address, doc='read only property socket address')
@@ -159,6 +170,7 @@ class JsonServer(JsonSocket):
         self._bind()
 
     def _bind(self):
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.socket.bind((self.address, self.port))
 
     def _listen(self):
@@ -197,11 +209,18 @@ class JsonClient(JsonSocket):
 
     def connect(self):
         """Attempt to connect to the server up to 10 times with backoff."""
-        for _ in range(10):
+        for attempt in range(1, 11):
             try:
+                logger.debug("connect attempt %d to %s:%s", attempt, self.address, self.port)
                 self.socket.connect((self.address, self.port))
             except socket.error as msg:
                 logger.error("SockThread Error: %s", msg)
+                # Recreate the socket to avoid retrying on a potentially bad fd.
+                self._close_socket()
+                self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.socket.settimeout(self._timeout)
+                self.conn = self.socket
+                logger.debug("recreated socket for retry %d to %s:%s", attempt, self.address, self.port)
                 time.sleep(3)
                 continue
             logger.info("...Socket Connected")
