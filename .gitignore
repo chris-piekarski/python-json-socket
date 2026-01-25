@@ -6,3 +6,7 @@
 .pydevproject
 .settings
 *.sw*
+.coverage
+build/
+dist/
+jsocket.egg-info/

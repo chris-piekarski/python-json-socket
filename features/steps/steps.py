@@ -1,9 +1,9 @@
+# pylint: disable=not-callable, missing-function-docstring, duplicate-code
 """Behave step implementations for json socket scenarios.
 
-Note: Pylint is unaware of Behave's decorator callables, so we disable the
-"not-callable" check for this file.
+Note: Pylint is unaware of Behave's decorator callables, and step helpers
+intentionally mirror test setup patterns, so we disable those checks here.
 """
-# pylint: disable=not-callable, missing-function-docstring
 
 import json
 import logging
@@ -90,19 +90,19 @@ def stop_server(context):
         # Give the thread a moment to terminate cleanly
         try:
             server.join(timeout=2.0)
-        except Exception:
+        except RuntimeError:
             pass
 
 
 @then(r"the server is stopped")
 def see_stopped_server(context):
     server = getattr(context, 'jsonserver', None)
-    assert server is not None, "%s" % False
+    assert server is not None, "server not initialized"
     # Wait briefly for the thread to terminate
     deadline = time.time() + 2.0
     while server.is_alive() and time.time() < deadline:
         time.sleep(0.05)
-    assert not server.is_alive(), "%s" % False
+    assert not server.is_alive(), "server did not stop in time"
 
 
 @then(r"I close the client")
@@ -111,7 +111,7 @@ def close_client(context):
     if client is not None:
         try:
             client.close()
-        except Exception:
+        except OSError:
             pass
 
 
@@ -139,7 +139,7 @@ def client_attempts_read_with_timeout(context, seconds):
     context.client_read_value = None
     try:
         context.client_read_value = client.read_obj()
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         context.client_read_exception = e
 
 
