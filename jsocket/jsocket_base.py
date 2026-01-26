@@ -38,9 +38,9 @@ def _socket_fileno(sock):
 
 
 class JsonSocket:
-    """Lightweight JSON-over-TCP socket wrapper with length-prefixed framing."""
+    """Lightweight JSON-over-TCP socket wrapper."""
 
-    def __init__(self, address='127.0.0.1', port=5489, timeout=2.0):
+    def __init__(self, address='127.0.0.1', port=5489, timeout=60.0):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.conn = self.socket
         self._timeout = timeout
@@ -53,47 +53,34 @@ class JsonSocket:
         """Send a JSON-serializable object over the connection."""
         msg = json.dumps(obj, ensure_ascii=False)
         if self.socket:
-            payload = msg.encode('utf-8')
-            frmt = f"={len(payload)}s"
-            packed_msg = struct.pack(frmt, payload)
-            packed_hdr = struct.pack('!I', len(packed_msg))
-            self._send(packed_hdr)
-            self._send(packed_msg)
+            payload = '<message>{}</message>'.format(msg)
+            self._send(payload)
 
     def _send(self, msg):
-        """Send all bytes in `msg` to the peer."""
-        sent = 0
-        while sent < len(msg):
-            sent += self.conn.send(msg[sent:])
-
-    def _read(self, size):
-        """Read exactly `size` bytes from the peer or raise on disconnect."""
-        data = b''
-        while len(data) < size:
-            data_tmp = self.conn.recv(size - len(data))
-            data += data_tmp
-            if data_tmp == b'':
-                raise RuntimeError("socket connection broken")
-        return data
-
-    def _msg_length(self):
-        """Read and unpack the 4-byte big-endian length header."""
-        d = self._read(4)
-        s = struct.unpack('!I', d)
-        return s[0]
+        """Send all bytes in `msg` over the connection."""
+        msg = msg.encode()
+        sent_bytes = 0
+        while sent_bytes < len(msg):
+            sent_bytes += self.conn.send(msg[sent_bytes:])
 
     def read_obj(self):
-        """Read a full message and decode it as JSON, returning a Python object."""
-        size = self._msg_length()
-        data = self._read(size)
-        frmt = f"={size}s"
-        msg = struct.unpack(frmt, data)
-        return json.loads(msg[0].decode('utf-8'))
+        """Recv until </message> end marker received."""
+        buf = b''
+        while True:
+            buf += self.conn.recv(1024)
+            # close on 0 bytes (close marker)
+            if len(buf) == 0:
+                self.close()
+                break
+            if buf.find(b'<message>') == 0 and buf.find(b'</message>') == len(buf)-10:
+                buf = buf.replace(b'<message>', b'')
+                buf = buf.replace(b'</message>', b'')
+                return json.loads(buf)
 
     def close(self):
         """Close active connection and the listening socket if open."""
         logger.debug(
-            "closing sockets (socket fd=%s, conn fd=%s)",
+            "Closing sockets (socket fd=%s, conn fd=%s)",
             _socket_fileno(self.socket),
             _socket_fileno(self.conn),
         )
@@ -172,25 +159,18 @@ class JsonServer(JsonSocket):
     def _bind(self):
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.socket.bind((self.address, self.port))
-
-    def _listen(self):
-        self.socket.listen(5)
+        self.socket.listen(1)
 
     def _accept(self):
         return self.socket.accept()
 
     def accept_connection(self):
         """Listen and accept a single client connection; set timeout accordingly."""
-        self._listen()
         self.conn, addr = self._accept()
         self.conn.settimeout(self.timeout)
         logger.debug(
             "connection accepted, conn socket (%s,%d,%s)", addr[0], addr[1], str(self.conn.gettimeout())
         )
-
-    def _reset_connection_ref(self):
-        """Reset the server's connection reference to the listening socket."""
-        self.conn = self.socket
 
     def _is_connected(self):
         try:
@@ -213,16 +193,15 @@ class JsonClient(JsonSocket):
             try:
                 logger.debug("connect attempt %d to %s:%s", attempt, self.address, self.port)
                 self.socket.connect((self.address, self.port))
-            except socket.error as msg:
+                logger.info("Socket connected...")
+                return True
+            except Exception as msg:
                 logger.error("SockThread Error: %s", msg)
                 # Recreate the socket to avoid retrying on a potentially bad fd.
                 self._close_socket()
                 self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 self.socket.settimeout(self._timeout)
                 self.conn = self.socket
-                logger.debug("recreated socket for retry %d to %s:%s", attempt, self.address, self.port)
+                logger.debug("Recreated socket for retry %d to %s:%s", attempt, self.address, self.port)
                 time.sleep(3)
-                continue
-            logger.info("...Socket Connected")
-            return True
         return False

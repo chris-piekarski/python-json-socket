@@ -33,21 +33,12 @@ from jsocket import jsocket_base
 logger = logging.getLogger("jsocket.tserver")
 
 
-def _response_summary(resp_obj) -> str:
-    if isinstance(resp_obj, dict):
-        return f"type=dict keys={len(resp_obj)}"
-    if isinstance(resp_obj, (list, tuple)):
-        return f"type={type(resp_obj).__name__} items={len(resp_obj)}"
-    return f"type={type(resp_obj).__name__}"
-
-
 class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.ABCMeta):
     """Single-threaded server that accepts one connection and processes messages in its thread."""
 
     def __init__(self, **kwargs):
         threading.Thread.__init__(self)
         jsocket_base.JsonServer.__init__(self, **kwargs)
-        self._is_alive = False
 
     @abc.abstractmethod
     def _process_message(self, obj) -> Optional[dict]:
@@ -61,59 +52,12 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.AB
         # Return None in the base class to satisfy linters; subclasses should override.
         return None
 
-    def _accept_client(self) -> bool:
-        """Accept an incoming connection; return True when a client connects."""
-        try:
-            self.accept_connection()
-        except socket.timeout as e:
-            logger.debug("accept timeout on %s:%s: %s", self.address, self.port, e)
-            return False
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            # Avoid noisy error logs during normal shutdown/sequencing
-            if self._is_alive:
-                logger.debug("accept error on %s:%s: %s", self.address, self.port, e)
-                return False
-            logger.debug("server stopping; accept loop exiting (%s:%s)", self.address, self.port)
-            self._is_alive = False
-            return False
-        return True
-
-    def _handle_client_messages(self):
-        """Read, process, and respond to client messages until disconnect."""
-        while self._is_alive:
-            try:
-                obj = self.read_obj()
-                resp_obj = self._process_message(obj)
-                if resp_obj is not None:
-                    logger.debug("sending response (%s)", _response_summary(resp_obj))
-                    self.send_obj(resp_obj)
-            except socket.timeout as e:
-                logger.debug("read timeout waiting for client data: %s", e)
-                continue
-            except Exception as e:  # pylint: disable=broad-exception-caught
-                # Treat client disconnects as normal; keep logs at info/debug
-                msg = str(e)
-                if isinstance(e, RuntimeError) and 'socket connection broken' in msg:
-                    logger.info("client connection broken, closing connection")
-                else:
-                    logger.debug("handler error (%s): %s", type(e).__name__, e)
-                self._close_connection()
-                break
-
     def run(self):
         # Ensure the run loop is active even when run() is invoked directly
         # (tests may call run() in a separate thread without invoking start()).
-        if not self._is_alive:
-            self._is_alive = True
-        while self._is_alive:
-            if not self._accept_client():
-                continue
-            self._handle_client_messages()
-        # Ensure sockets are cleaned up when the server stops
-        try:
-            self.close()
-        except OSError:
-            pass
+        while True:
+            self.accept_connection()
+            self.send_obj(self._process_message(self.read_obj()))
 
     def start(self):
         """ Starts the threaded server. 
@@ -121,7 +65,6 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.AB
             
             @retval None 
         """
-        self._is_alive = True
         super().start()
         logger.debug("Threaded Server started on %s:%s", self.address, self.port)
 
@@ -131,7 +74,6 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.AB
 
             @retval None 
         """
-        self._is_alive = False
         logger.debug("Threaded Server stopped on %s:%s", self.address, self.port)
 
 
