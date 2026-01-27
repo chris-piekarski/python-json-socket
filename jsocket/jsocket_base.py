@@ -46,6 +46,7 @@ class JsonSocket:
         self._timeout = timeout
         self._address = address
         self._port = port
+        self._last_client_addr = None
         # Ensure the primary socket respects timeout for accept/connect operations
         self.socket.settimeout(self._timeout)
 
@@ -183,6 +184,7 @@ class JsonServer(JsonSocket):
         """Listen and accept a single client connection; set timeout accordingly."""
         self._listen()
         self.conn, addr = self._accept()
+        self._last_client_addr = addr
         self.conn.settimeout(self.timeout)
         logger.debug(
             "connection accepted, conn socket (%s,%d,%s)", addr[0], addr[1], str(self.conn.gettimeout())

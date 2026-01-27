@@ -84,6 +84,10 @@ def test_threadedserver_timeout_then_exception_triggers_close():
             self._is_alive = True
             self._address = "127.0.0.1"
             self._port = 0
+            self._stats_lock = threading.Lock()
+            self._client_started_at = None
+            self._client_id = None
+            self._last_client_addr = ("127.0.0.1", 0)
             self._state = 0
             self.close_calls = 0
 

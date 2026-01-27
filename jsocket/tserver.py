@@ -41,6 +41,16 @@ def _response_summary(resp_obj) -> str:
     return f"type={type(resp_obj).__name__}"
 
 
+def _format_client_id(addr) -> str:
+    try:
+        host, port = addr[0], addr[1]
+        if ":" in host:
+            return f"[{host}]:{port}"
+        return f"{host}:{port}"
+    except Exception:  # pylint: disable=broad-exception-caught
+        return "unknown"
+
+
 class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.ABCMeta):
     """Single-threaded server that accepts one connection and processes messages in its thread."""
 
@@ -48,6 +58,9 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.AB
         threading.Thread.__init__(self)
         jsocket_base.JsonServer.__init__(self, **kwargs)
         self._is_alive = False
+        self._stats_lock = threading.Lock()
+        self._client_started_at = None
+        self._client_id = None
 
     @abc.abstractmethod
     def _process_message(self, obj) -> Optional[dict]:
@@ -60,6 +73,32 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.AB
         """
         # Return None in the base class to satisfy linters; subclasses should override.
         return None
+
+    def _record_client_start(self):
+        addr = getattr(self, "_last_client_addr", None)
+        if addr is None:
+            try:
+                addr = self.conn.getpeername()
+            except OSError:
+                addr = None
+        with self._stats_lock:
+            self._client_started_at = time.monotonic()
+            self._client_id = _format_client_id(addr)
+
+    def _clear_client_stats(self):
+        with self._stats_lock:
+            self._client_started_at = None
+            self._client_id = None
+
+    def get_client_stats(self) -> dict:
+        """Return connected client count and per-client durations in seconds."""
+        with self._stats_lock:
+            started_at = self._client_started_at
+            client_id = self._client_id
+        if not started_at or not client_id or not self.connected:
+            return {"connected_clients": 0, "clients": {}}
+        duration = time.monotonic() - started_at
+        return {"connected_clients": 1, "clients": {client_id: duration}}
 
     def _accept_client(self) -> bool:
         """Accept an incoming connection; return True when a client connects."""
@@ -76,6 +115,7 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.AB
             logger.debug("server stopping; accept loop exiting (%s:%s)", self.address, self.port)
             self._is_alive = False
             return False
+        self._record_client_start()
         return True
 
     def _handle_client_messages(self):
@@ -99,6 +139,7 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.AB
                     logger.debug("handler error (%s): %s", type(e).__name__, e)
                 self._close_connection()
                 break
+        self._clear_client_stats()
 
     def run(self):
         # Ensure the run loop is active even when run() is invoked directly
@@ -132,6 +173,7 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.AB
             @retval None 
         """
         self._is_alive = False
+        self._clear_client_stats()
         logger.debug("Threaded Server stopped on %s:%s", self.address, self.port)
 
 
@@ -144,6 +186,8 @@ class ServerFactoryThread(threading.Thread, jsocket_base.JsonSocket, metaclass=a
         self.conn = None
         jsocket_base.JsonSocket.__init__(self, **kwargs)
         self._is_alive = False
+        self._client_started_at = None
+        self._client_id = None
 
     def swap_socket(self, new_sock):
         """ Swaps the existing socket with a new one. Useful for setting socket after a new connection.
@@ -153,6 +197,12 @@ class ServerFactoryThread(threading.Thread, jsocket_base.JsonSocket, metaclass=a
         """
         self.socket = new_sock
         self.conn = self.socket
+        try:
+            addr = new_sock.getpeername()
+        except OSError:
+            addr = None
+        self._client_id = _format_client_id(addr)
+        self._client_started_at = time.monotonic()
 
     def run(self):
         """ Should exit when client closes socket conn.
@@ -215,6 +265,7 @@ class ServerFactory(ThreadedServer):
             raise TypeError("serverThread not of type", ServerFactoryThread)
         self._thread_type = server_thread
         self._threads = []
+        self._threads_lock = threading.Lock()
         self._thread_args = kwargs
         self._thread_args.pop('address', None)
         self._thread_args.pop('port', None)
@@ -245,9 +296,21 @@ class ServerFactory(ThreadedServer):
                     accepted_conn = self.conn
                     # Reset server connection reference so we can accept again
                     self._reset_connection_ref()
+                    if not self._is_alive:
+                        # Server is stopping; close the accepted connection without spawning a worker.
+                        try:
+                            accepted_conn.shutdown(socket.SHUT_RDWR)
+                        except OSError:
+                            pass
+                        try:
+                            accepted_conn.close()
+                        except OSError:
+                            pass
+                        break
                     tmp.swap_socket(accepted_conn)
                     tmp.start()
-                    self._threads.append(tmp)
+                    with self._threads_lock:
+                        self._threads.append(tmp)
                     break
 
         self._wait_to_exit()
@@ -255,14 +318,20 @@ class ServerFactory(ThreadedServer):
 
     def stop_all(self):
         """Stop and join all active worker threads."""
-        for t in self._threads:
-            if t.is_alive():
+        while True:
+            with self._threads_lock:
+                threads = [t for t in self._threads if t.is_alive()]
+            if not threads:
+                break
+            for t in threads:
                 t.force_stop()
                 t.join()
+            self._purge_threads()
 
     def _purge_threads(self):
         # Rebuild list to avoid mutating while iterating
-        self._threads = [t for t in self._threads if t.is_alive()]
+        with self._threads_lock:
+            self._threads = [t for t in self._threads if t.is_alive()]
 
     def stop(self):
         # Stop accepting and stop all workers
@@ -279,6 +348,25 @@ class ServerFactory(ThreadedServer):
             time.sleep(0.2)
 
     def _get_num_of_active_threads(self):
-        return len([True for x in self._threads if x.is_alive()])
+        with self._threads_lock:
+            threads = list(self._threads)
+        return len([True for x in threads if x.is_alive()])
+
+    def get_client_stats(self) -> dict:
+        """Return connected client count and per-client durations in seconds."""
+        with self._threads_lock:
+            threads = list(self._threads)
+        now = time.monotonic()
+        clients = {}
+        active = 0
+        for t in threads:
+            if not t.is_alive():
+                continue
+            active += 1
+            started_at = getattr(t, "_client_started_at", None)
+            client_id = getattr(t, "_client_id", None) or f"thread-{t.name}"
+            duration = now - started_at if started_at else 0.0
+            clients[client_id] = duration
+        return {"connected_clients": active, "clients": clients}
 
     active = property(_get_num_of_active_threads, doc="number of active threads")
