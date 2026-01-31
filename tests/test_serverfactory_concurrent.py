@@ -18,6 +18,7 @@ class EchoWorker(jsocket.ServerFactoryThread):
         return None
 
 
+@pytest.mark.integration
 @pytest.mark.timeout(15)
 def test_serverfactory_handles_two_clients_concurrently():
     """Two clients can connect and receive echoes concurrently."""

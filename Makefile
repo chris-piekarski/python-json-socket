@@ -1,11 +1,11 @@
-.PHONY: help wheel test-behave test-pytest-cov test-behave-cov coverage lint
+.PHONY: help wheel test-behave test test-behave-cov coverage lint
 
 help:
 	@echo "Targets:"
 	@echo "  help               Show this help message"
 	@echo "  wheel              Build a wheel into dist/"
 	@echo "  test-behave        Run behave tests"
-	@echo "  test-pytest-cov    Run pytest with coverage (terminal report)"
+	@echo "  test               Run pytest with coverage (terminal report)"
 	@echo "  test-behave-cov    Run behave with coverage (appends to .coverage)"
 	@echo "  coverage           Run combined pytest + behave coverage and export reports"
 	@echo "  lint               Run pylint with fail-under threshold"
@@ -14,7 +14,7 @@ test-behave:
 	PYTHONPATH=. behave -f progress2
 
 # Pytest coverage (terminal report)
-test-pytest-cov:
+test:
 	pytest -q --cov=jsocket --cov-branch --cov-report=term-missing
 
 # Behave coverage (appends to same .coverage data)

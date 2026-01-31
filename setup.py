@@ -1,10 +1,28 @@
 #!/usr/bin/env python
 
 from setuptools import setup, Extension
+import pathlib
+import re
+
+
+def _read_version():
+    version_file = pathlib.Path(__file__).parent / "jsocket" / "_version.py"
+    content = version_file.read_text(encoding="utf-8")
+    match = re.search(r'^__version__\s*=\s*[\'"]([^\'"]+)[\'"]', content, re.M)
+    if not match:
+        raise RuntimeError("Unable to find __version__ in jsocket/_version.py")
+    return match.group(1)
+
+
+def _read_long_description():
+    readme = pathlib.Path(__file__).parent / "README.md"
+    return readme.read_text(encoding="utf-8")
 
 setup(name='jsocket',
-      version='1.9.3',
+      version=_read_version(),
       description='Python JSON Server & Client',
+      long_description=_read_long_description(),
+      long_description_content_type='text/markdown',
       author='Christopher Piekarski',
       author_email='chris@cpiekarski.com',
       maintainer='Christopher Piekarski',
@@ -17,7 +35,6 @@ setup(name='jsocket',
       license_files=['LICENSE'],
       classifiers=[
                    'Intended Audience :: Developers',
-                   'License :: OSI Approved :: Apache Software License',
                    'Programming Language :: Python :: 3.9',
                    'Operating System :: OS Independent',
                    'Development Status :: 5 - Production/Stable',
