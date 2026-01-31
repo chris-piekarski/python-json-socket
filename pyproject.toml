@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jsocket"
+dynamic = ["version"]
+description = "Python JSON Server & Client"
+readme = "README.md"
+requires-python = ">=3.8"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{name = "Christopher Piekarski", email = "chris@cpiekarski.com"}]
+maintainers = [{name = "Christopher Piekarski", email = "chris@cpiekarski.com"}]
+keywords = ["json", "socket", "server", "client"]
+classifiers = [
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3.9",
+  "Operating System :: OS Independent",
+  "Development Status :: 5 - Production/Stable",
+  "Topic :: System :: Networking",
+  "Topic :: Software Development :: Libraries :: Application Frameworks",
+  "Topic :: System :: Distributed Computing",
+  "Topic :: System :: Hardware :: Symmetric Multi-processing",
+]
+
+[project.urls]
+Homepage = "https://cpiekarski.com/2012/01/25/python-json-client-server-redux/"
+
+[tool.setuptools]
+packages = ["jsocket"]
+
+[tool.setuptools.dynamic]
+version = {attr = "jsocket._version.__version__"}
