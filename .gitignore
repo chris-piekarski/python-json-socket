@@ -7,6 +7,9 @@
 .settings
 *.sw*
 .coverage
+.pytest_cache/
+.pylint.d/
+coverage.xml
 build/
 dist/
 jsocket.egg-info/

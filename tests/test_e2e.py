@@ -23,6 +23,7 @@ class EchoServer(jsocket.ThreadedServer):
         return None
 
 
+@pytest.mark.integration
 @pytest.mark.timeout(10)
 def test_end_to_end_echo_and_connection():
     """Server accepts a connection and echoes payloads end-to-end."""

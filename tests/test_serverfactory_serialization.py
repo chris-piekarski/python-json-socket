@@ -19,6 +19,7 @@ class EchoWorker(jsocket.ServerFactoryThread):
         return None
 
 
+@pytest.mark.integration
 @pytest.mark.timeout(15)
 def test_serverfactory_accepts_multiple_active_clients_concurrently():
     """ServerFactory accepts a second client while the first is active.

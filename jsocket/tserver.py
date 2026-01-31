@@ -20,15 +20,15 @@ __copyright__= """
     See the License for the specific language governing permissions and
     limitations under the License.
 """
-__version__  = "1.0.3"
-
 import threading
 import socket
 import time
 import logging
 import abc
 from typing import Optional
+
 from jsocket import jsocket_base
+from ._version import __version__
 
 logger = logging.getLogger("jsocket.tserver")
 

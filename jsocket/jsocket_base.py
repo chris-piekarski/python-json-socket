@@ -19,13 +19,13 @@ __copyright__= """
     See the License for the specific language governing permissions and
     limitations under the License.
 """
-__version__  = "1.0.3"
-
 import json
 import socket
 import struct
 import logging
 import time
+
+from ._version import __version__
 
 logger = logging.getLogger("jsocket")
 

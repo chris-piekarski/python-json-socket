@@ -19,6 +19,7 @@ class EchoServer(jsocket.ThreadedServer):
         return None
 
 
+@pytest.mark.integration
 @pytest.mark.timeout(10)
 def test_server_accepts_multiple_clients_sequentially():
     """Regression test: listener remains open after a client disconnects."""

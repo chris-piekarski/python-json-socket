@@ -32,6 +32,7 @@ class EchoWorker(jsocket.ServerFactoryThread):
         return None
 
 
+@pytest.mark.integration
 @pytest.mark.timeout(10)
 def test_threadedserver_client_stats():
     """ThreadedServer exposes connected client duration stats."""
@@ -72,6 +73,7 @@ def test_threadedserver_client_stats():
         server.join(timeout=3)
 
 
+@pytest.mark.integration
 @pytest.mark.timeout(15)
 def test_serverfactory_client_stats():
     """ServerFactory exposes connected client duration stats."""

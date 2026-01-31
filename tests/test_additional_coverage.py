@@ -73,6 +73,7 @@ def test_jsonserver_sets_reuseaddr(monkeypatch):
 
 def test_threadedserver_timeout_then_exception_triggers_close():
     """ThreadedServer should ignore timeouts and close on generic exceptions."""
+    state = {"step": 0, "close_calls": 0}
 
     class ProbeServer(jsocket.ThreadedServer):
         """ThreadedServer stub that avoids real sockets."""
@@ -88,8 +89,6 @@ def test_threadedserver_timeout_then_exception_triggers_close():
             self._client_started_at = None
             self._client_id = None
             self._last_client_addr = ("127.0.0.1", 0)
-            self._state = 0
-            self.close_calls = 0
 
         def accept_connection(self):
             """No-op; simulate an accepted connection."""
@@ -99,11 +98,11 @@ def test_threadedserver_timeout_then_exception_triggers_close():
         def read_obj(self):
             """Simulate timeout, then error, then timeouts."""
             # First a timeout, then an exception, then timeouts until stopped
-            if self._state == 0:
-                self._state = 1
+            if state["step"] == 0:
+                state["step"] = 1
                 raise socket.timeout("t")
-            if self._state == 1:
-                self._state = 2
+            if state["step"] == 1:
+                state["step"] = 2
                 raise ValueError("boom")
             raise socket.timeout("t")
 
@@ -111,7 +110,7 @@ def test_threadedserver_timeout_then_exception_triggers_close():
             return None
 
         def _close_connection(self):
-            self.close_calls += 1
+            state["close_calls"] += 1
 
         def close(self):
             """No-op: avoid touching real sockets."""
@@ -125,7 +124,7 @@ def test_threadedserver_timeout_then_exception_triggers_close():
     srv.stop()
     srv.join(timeout=1.0)
     # One close due to ValueError path
-    assert srv.close_calls == 1
+    assert state["close_calls"] == 1
 
 
 def test_serverfactorythread_exception_closes_connection():
