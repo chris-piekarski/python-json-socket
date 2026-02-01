@@ -1,4 +1,4 @@
-.PHONY: help wheel test-behave test test-behave-cov coverage lint
+.PHONY: help wheel test-behave test test-behave-cov coverage lint publish version
 
 help:
 	@echo "Targets:"
@@ -9,6 +9,8 @@ help:
 	@echo "  test-behave-cov    Run behave with coverage (appends to .coverage)"
 	@echo "  coverage           Run combined pytest + behave coverage and export reports"
 	@echo "  lint               Run pylint with fail-under threshold"
+	@echo "  publish            Upload dist/* to PyPI via twine"
+	@echo "  version            Show package version and git SHA"
 
 test-behave:
 	PYTHONPATH=. behave -f progress2
@@ -36,4 +38,22 @@ lint:
 	PYLINTHOME=.pylint.d pylint jsocket tests features/steps --fail-under=9.0 --persistent=n --disable=duplicate-code
 
 wheel:
-	python setup.py bdist_wheel
+	python -m build --wheel
+
+publish:
+	python -m build
+	python -m twine check dist/*
+	python -m twine upload dist/*
+
+version:
+	@python -c "import pathlib, re; p = pathlib.Path('jsocket/_version.py'); m = re.search(r'__version__\\s*=\\s*[\\\"\\']([^\\\"\\']+)[\\\"\\']', p.read_text(encoding='utf-8')); print(f\"version: {m.group(1) if m else 'unknown'}\")"
+	@sha=$$(git log -1 --format=%h 2>/dev/null); \
+	if [ -n "$$sha" ]; then \
+		if [ -n "$$(git status --porcelain 2>/dev/null)" ]; then \
+			echo "git: $$sha (dirty)"; \
+		else \
+			echo "git: $$sha"; \
+		fi; \
+	else \
+		echo "git: unknown"; \
+	fi
