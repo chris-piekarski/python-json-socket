@@ -25,6 +25,12 @@ htmlcov/
 .project
 .pydevproject
 .settings
+
+# Ignore JetBrains IDE Files
+.idea/
+
+# Ignore Claude Code Files
+.claude/
 *.sw*
 
 # Environment

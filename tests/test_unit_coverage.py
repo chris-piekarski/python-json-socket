@@ -13,6 +13,7 @@ import jsocket.tserver as tserver
 
 class FakeSocket:  # pylint: disable=missing-function-docstring
     """Simple socket stub for unit tests."""
+
     def __init__(self, fileno_value=1, fileno_exc=None, shutdown_exc=None, close_exc=None):
         self._fileno_value = fileno_value
         self._fileno_exc = fileno_exc
@@ -226,6 +227,7 @@ def test_response_summary_and_format_client_id():
 
 class _BaseServer(tserver.ThreadedServer):  # pylint: disable=missing-function-docstring
     """ThreadedServer stub for base-method coverage."""
+
     def __init__(self):  # pylint: disable=super-init-not-called
         threading.Thread.__init__(self)
         self._is_alive = False
@@ -241,6 +243,7 @@ class _BaseServer(tserver.ThreadedServer):  # pylint: disable=missing-function-d
 
 class _AcceptErrorServer(tserver.ThreadedServer):  # pylint: disable=missing-function-docstring
     """ThreadedServer stub that raises on accept."""
+
     def __init__(self, alive):  # pylint: disable=super-init-not-called
         threading.Thread.__init__(self)
         self._is_alive = alive
@@ -260,6 +263,7 @@ class _AcceptErrorServer(tserver.ThreadedServer):  # pylint: disable=missing-fun
 
 class _RunServer(tserver.ThreadedServer):  # pylint: disable=missing-function-docstring
     """ThreadedServer stub that forces close error."""
+
     def __init__(self):  # pylint: disable=super-init-not-called
         threading.Thread.__init__(self)
         self._is_alive = False
@@ -280,12 +284,14 @@ class _RunServer(tserver.ThreadedServer):  # pylint: disable=missing-function-do
 
 class _PeernameRaises:  # pylint: disable=missing-function-docstring
     """Object that raises on getpeername()."""
+
     def getpeername(self):
         raise OSError("boom")
 
 
 class _Worker(tserver.ServerFactoryThread):  # pylint: disable=missing-function-docstring
     """Worker stub that sends a response once."""
+
     def __init__(self):  # pylint: disable=super-init-not-called
         threading.Thread.__init__(self)
         self._is_alive = True
@@ -312,6 +318,7 @@ class _Worker(tserver.ServerFactoryThread):  # pylint: disable=missing-function-
 
 class _FactoryBase(tserver.ServerFactoryThread):  # pylint: disable=missing-function-docstring
     """Worker stub that calls base _process_message."""
+
     def __init__(self):  # pylint: disable=super-init-not-called
         threading.Thread.__init__(self)
         self._is_alive = False
@@ -322,6 +329,7 @@ class _FactoryBase(tserver.ServerFactoryThread):  # pylint: disable=missing-func
 
 class _FactoryWorker(tserver.ServerFactoryThread):  # pylint: disable=missing-function-docstring
     """Worker stub without processing logic."""
+
     def __init__(self):  # pylint: disable=super-init-not-called
         threading.Thread.__init__(self)
         self._is_alive = False
@@ -332,6 +340,7 @@ class _FactoryWorker(tserver.ServerFactoryThread):  # pylint: disable=missing-fu
 
 class _StoppingFactory(tserver.ServerFactory):  # pylint: disable=missing-function-docstring
     """ServerFactory stub that stops immediately."""
+
     def __init__(self):  # pylint: disable=super-init-not-called
         self._is_alive = True
         self._thread_type = _FactoryWorker
@@ -360,6 +369,7 @@ class _StoppingFactory(tserver.ServerFactory):  # pylint: disable=missing-functi
 
 class _StopAllRaises(tserver.ServerFactory):  # pylint: disable=missing-function-docstring
     """ServerFactory stub that raises in stop_all."""
+
     def __init__(self):  # pylint: disable=super-init-not-called
         self._is_alive = True
         self._address = "127.0.0.1"
@@ -371,12 +381,14 @@ class _StopAllRaises(tserver.ServerFactory):  # pylint: disable=missing-function
 
 class _DeadThread:  # pylint: disable=missing-function-docstring
     """Thread stub that is not alive."""
+
     def is_alive(self):
         return False
 
 
 class _AliveThread:  # pylint: disable=missing-function-docstring
     """Thread stub that is alive without a client id."""
+
     def __init__(self):
         self._client_started_at = None
         self._client_id = None
@@ -388,6 +400,7 @@ class _AliveThread:  # pylint: disable=missing-function-docstring
 
 class _ThreadWithName:  # pylint: disable=missing-function-docstring
     """Thread stub that is alive with a name."""
+
     def __init__(self):
         self._client_started_at = None
         self._client_id = None
@@ -399,6 +412,7 @@ class _ThreadWithName:  # pylint: disable=missing-function-docstring
 
 class _ThreadLock:  # pylint: disable=missing-function-docstring
     """Context manager stub for thread locks."""
+
     def __enter__(self):
         return self
 
@@ -408,6 +422,7 @@ class _ThreadLock:  # pylint: disable=missing-function-docstring
 
 class _StatsFactory(tserver.ServerFactory):  # pylint: disable=missing-function-docstring
     """ServerFactory stub with dead threads."""
+
     def __init__(self):  # pylint: disable=super-init-not-called
         self._threads = [_DeadThread()]
         self._threads_lock = _ThreadLock()
@@ -415,10 +430,10 @@ class _StatsFactory(tserver.ServerFactory):  # pylint: disable=missing-function-
 
 class _StatsFactoryAlive(tserver.ServerFactory):  # pylint: disable=missing-function-docstring
     """ServerFactory stub with live threads."""
+
     def __init__(self):  # pylint: disable=super-init-not-called
         self._threads = [_AliveThread(), _ThreadWithName()]
         self._threads_lock = _ThreadLock()
-
 
 
 def test_base_process_message_returns_none():
@@ -476,6 +491,7 @@ def test_serverfactorythread_base_process_message_returns_none():
 
 def test_serverfactory_init_type_error(monkeypatch):
     """ServerFactory should reject non-worker classes."""
+
     def fake_init(self, address, port):  # pylint: disable=unused-argument
         """Stub ThreadedServer initializer for isolation."""
         self.address = address
@@ -498,6 +514,7 @@ def test_serverfactory_init_type_error(monkeypatch):
 
 def test_serverfactory_process_message_returns_none(monkeypatch):
     """ServerFactory._process_message should return None."""
+
     def fake_init(self, address, port):  # pylint: disable=unused-argument
         """Stub ThreadedServer initializer for isolation."""
         self.address = address
