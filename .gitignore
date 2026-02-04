@@ -1,7 +1,27 @@
-# Ignore Python-Compiled Files
+# Python
 *.pyc
+*.pyo
+__pycache__/
+.venv/
+venv/
+*.egg
+.eggs/
+build/
+dist/
+jsocket.egg-info/
 
-# Ignore Eclipse/PyDev Project Files
+# Testing & Linting
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/
+.pylint.d/
+.mypy_cache/
+.ruff_cache/
+
+# IDE & Editors
+.idea/
+.vscode/
 .project
 .pydevproject
 .settings
@@ -12,10 +32,12 @@
 # Ignore Claude Code Files
 .claude/
 *.sw*
-.coverage
-.pytest_cache/
-.pylint.d/
-coverage.xml
-build/
-dist/
-jsocket.egg-info/
+
+# Environment
+.env
+
+# OS
+.DS_Store
+
+# Claude Code
+.claude/

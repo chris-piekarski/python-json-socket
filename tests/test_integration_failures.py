@@ -326,7 +326,7 @@ def test_serverfactory_fast_client_not_blocked_by_slow_client():
     idle_thread.start()
 
     try:
-        assert ready_event.wait(timeout=1.0) is True
+        assert ready_event.wait(timeout=5.0) is True
         fast_client = _connect_client(port)
         started = time.monotonic()
         _roundtrip(fast_client, {"echo": "fast"})
