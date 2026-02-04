@@ -38,15 +38,15 @@ lint:
 	PYLINTHOME=.pylint.d pylint jsocket tests features/steps --fail-under=9.0 --persistent=n --disable=duplicate-code
 
 wheel:
-	python -m build --wheel
+	python3 -m build --wheel
 
 publish:
-	python -m build
-	python -m twine check dist/*
-	python -m twine upload dist/*
+	python3 -m build
+	python3 -m twine check dist/*
+	python3 -m twine upload dist/*
 
 version:
-	@python -c "import pathlib, re; p = pathlib.Path('jsocket/_version.py'); m = re.search(r'__version__\\s*=\\s*[\\\"\\']([^\\\"\\']+)[\\\"\\']', p.read_text(encoding='utf-8')); print(f\"version: {m.group(1) if m else 'unknown'}\")"
+	@python3 -c "import pathlib, re; p = pathlib.Path('jsocket/_version.py'); m = re.search(r'__version__\\s*=\\s*[\\\"\\']([^\\\"\\']+)[\\\"\\']', p.read_text(encoding='utf-8')); print(f\"version: {m.group(1) if m else 'unknown'}\")"
 	@sha=$$(git log -1 --format=%h 2>/dev/null); \
 	if [ -n "$$sha" ]; then \
 		if [ -n "$$(git status --porcelain 2>/dev/null)" ]; then \
