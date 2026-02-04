@@ -24,10 +24,20 @@ import socket
 import struct
 import logging
 import time
+import zlib
 
 from ._version import __version__
 
 logger = logging.getLogger("jsocket")
+
+FRAME_MAGIC = b"JSN1"
+FRAME_HEADER_FMT = "!4sII"
+FRAME_HEADER_SIZE = struct.calcsize(FRAME_HEADER_FMT)
+DEFAULT_MAX_MESSAGE_SIZE = 10 * 1024 * 1024
+
+
+class FramingError(RuntimeError):
+    """Raised when a message fails framing or integrity checks."""
 
 
 def _socket_fileno(sock):
@@ -40,12 +50,14 @@ def _socket_fileno(sock):
 class JsonSocket:
     """Lightweight JSON-over-TCP socket wrapper with length-prefixed framing."""
 
-    def __init__(self, address='127.0.0.1', port=5489, timeout=2.0):
+    def __init__(self, address='127.0.0.1', port=5489, timeout=2.0, max_message_size=DEFAULT_MAX_MESSAGE_SIZE):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.conn = self.socket
         self._timeout = timeout
         self._address = address
         self._port = port
+        self._max_message_size = None
+        self.max_message_size = max_message_size
         self._last_client_addr = None
         # Ensure the primary socket respects timeout for accept/connect operations
         self.socket.settimeout(self._timeout)
@@ -55,11 +67,12 @@ class JsonSocket:
         msg = json.dumps(obj, ensure_ascii=False)
         if self.socket:
             payload = msg.encode('utf-8')
-            frmt = f"={len(payload)}s"
-            packed_msg = struct.pack(frmt, payload)
-            packed_hdr = struct.pack('!I', len(packed_msg))
+            if self._max_message_size is not None and len(payload) > self._max_message_size:
+                raise ValueError(f"message exceeds max_message_size ({len(payload)} > {self._max_message_size})")
+            checksum = zlib.crc32(payload) & 0xFFFFFFFF
+            packed_hdr = struct.pack(FRAME_HEADER_FMT, FRAME_MAGIC, len(payload), checksum)
             self._send(packed_hdr)
-            self._send(packed_msg)
+            self._send(payload)
 
     def _send(self, msg):
         """Send all bytes in `msg` to the peer."""
@@ -67,29 +80,53 @@ class JsonSocket:
         while sent < len(msg):
             sent += self.conn.send(msg[sent:])
 
-    def _read(self, size):
+    def _read(self, size, allow_timeout=False):
         """Read exactly `size` bytes from the peer or raise on disconnect."""
         data = b''
         while len(data) < size:
-            data_tmp = self.conn.recv(size - len(data))
-            data += data_tmp
+            try:
+                data_tmp = self.conn.recv(size - len(data))
+            except socket.timeout:
+                if allow_timeout and not data:
+                    raise
+                self._close_connection()
+                raise FramingError("socket read timeout during message")
             if data_tmp == b'':
+                self._close_connection()
                 raise RuntimeError("socket connection broken")
+            data += data_tmp
         return data
 
-    def _msg_length(self):
-        """Read and unpack the 4-byte big-endian length header."""
-        d = self._read(4)
-        s = struct.unpack('!I', d)
-        return s[0]
+    def _read_header(self):
+        """Read and unpack the framing header."""
+        header = self._read(FRAME_HEADER_SIZE, allow_timeout=True)
+        magic, size, checksum = struct.unpack(FRAME_HEADER_FMT, header)
+        if magic != FRAME_MAGIC:
+            self._close_connection()
+            raise FramingError("invalid message header magic")
+        if self._max_message_size is not None and size > self._max_message_size:
+            self._close_connection()
+            raise FramingError(f"message length {size} exceeds max_message_size {self._max_message_size}")
+        return size, checksum
 
     def read_obj(self):
         """Read a full message and decode it as JSON, returning a Python object."""
-        size = self._msg_length()
+        size, checksum = self._read_header()
         data = self._read(size)
-        frmt = f"={size}s"
-        msg = struct.unpack(frmt, data)
-        return json.loads(msg[0].decode('utf-8'))
+        actual = zlib.crc32(data) & 0xFFFFFFFF
+        if actual != checksum:
+            self._close_connection()
+            raise FramingError("message checksum mismatch")
+        try:
+            decoded = data.decode('utf-8')
+        except UnicodeDecodeError as e:
+            self._close_connection()
+            raise FramingError("invalid UTF-8 payload") from e
+        try:
+            return json.loads(decoded)
+        except json.JSONDecodeError as e:
+            self._close_connection()
+            raise FramingError("invalid JSON payload") from e
 
     def close(self):
         """Close active connection and the listening socket if open."""
@@ -118,10 +155,10 @@ class JsonSocket:
             pass
 
     def _close_connection(self):
-        """Best-effort shutdown and close of the accepted connection socket."""
+        """Best-effort shutdown and close of the connection socket."""
         logger.debug("closing connection socket (fd=%s)", _socket_fileno(self.conn))
         try:
-            if self.conn and self.conn is not self.socket and self.conn.fileno() != -1:
+            if self.conn and self.conn.fileno() != -1:
                 try:
                     self.conn.shutdown(socket.SHUT_RDWR)
                 except OSError:
@@ -158,9 +195,24 @@ class JsonSocket:
         """No-op: port is read-only after initialization."""
         return None
 
+    def _get_max_message_size(self):
+        """Get the maximum allowed message size in bytes."""
+        return self._max_message_size
+
+    def _set_max_message_size(self, size):
+        """Set the maximum allowed message size in bytes."""
+        if size is None:
+            self._max_message_size = None
+            return
+        size = int(size)
+        if size <= 0:
+            raise ValueError("max_message_size must be positive")
+        self._max_message_size = size
+
     timeout = property(_get_timeout, _set_timeout, doc='Get/set the socket timeout')
     address = property(_get_address, _set_address, doc='read only property socket address')
     port = property(_get_port, _set_port, doc='read only property socket port')
+    max_message_size = property(_get_max_message_size, _set_max_message_size, doc='Get/set max message size in bytes')
 
 
 class JsonServer(JsonSocket):
@@ -169,6 +221,22 @@ class JsonServer(JsonSocket):
     def __init__(self, address='127.0.0.1', port=5489):
         super().__init__(address, port)
         self._bind()
+
+    def _close_connection(self):
+        """Best-effort shutdown and close of the accepted connection socket."""
+        logger.debug("closing connection socket (fd=%s)", _socket_fileno(self.conn))
+        try:
+            if self.conn and self.conn is not self.socket and self.conn.fileno() != -1:
+                try:
+                    self.conn.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+                try:
+                    self.conn.close()
+                except OSError:
+                    pass
+        except OSError:
+            pass
 
     def _bind(self):
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

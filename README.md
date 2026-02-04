@@ -132,7 +132,9 @@ Behavior-Driven Tests (Behave)
 Notes
 -----
 
-- Message framing uses a 4‑byte big‑endian length header followed by a JSON payload encoded as UTF‑8.
+- Breaking change: version 2.0.0 uses a new framing header (magic + length + CRC32). v1 clients are incompatible.
+- Message framing uses a 12‑byte header: 4‑byte magic, 4‑byte big‑endian length, and 4‑byte CRC32 of the payload, followed by a JSON payload encoded as UTF‑8.
+- `max_message_size` defaults to 10MB; set `.max_message_size` to adjust or set to `None` to disable.
 - On disconnect, reads raise `RuntimeError("socket connection broken")` so callers can distinguish cleanly from timeouts.
 - Binding with `port=0` lets the OS choose an ephemeral port; find it with `server.socket.getsockname()`.
 

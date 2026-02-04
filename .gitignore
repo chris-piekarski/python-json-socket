@@ -5,6 +5,12 @@
 .project
 .pydevproject
 .settings
+
+# Ignore JetBrains IDE Files
+.idea/
+
+# Ignore Claude Code Files
+.claude/
 *.sw*
 .coverage
 .pytest_cache/

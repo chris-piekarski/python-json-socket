@@ -4,9 +4,11 @@ import socket
 import struct
 import threading
 import time
+import zlib
 import pytest
 
 import jsocket
+import jsocket.jsocket_base as jsocket_base
 
 
 class EchoServer(jsocket.ThreadedServer):
@@ -51,7 +53,8 @@ def _send_partial_payload(address, port, payload, partial_len):
     try:
         sock.settimeout(1.0)
         sock.connect((address, port))
-        header = struct.pack("!I", len(payload))
+        checksum = zlib.crc32(payload) & 0xFFFFFFFF
+        header = struct.pack(jsocket_base.FRAME_HEADER_FMT, jsocket_base.FRAME_MAGIC, len(payload), checksum)
         sock.sendall(header)
         if partial_len:
             sock.sendall(payload[:partial_len])
@@ -68,7 +71,8 @@ def _send_invalid_payload(address, port, payload):
     try:
         sock.settimeout(1.0)
         sock.connect((address, port))
-        header = struct.pack("!I", len(payload))
+        checksum = zlib.crc32(payload) & 0xFFFFFFFF
+        header = struct.pack(jsocket_base.FRAME_HEADER_FMT, jsocket_base.FRAME_MAGIC, len(payload), checksum)
         sock.sendall(header + payload)
     finally:
         try:
@@ -112,6 +116,36 @@ def _run_idle_client(port, ready_event, idle_time):
                 client.close()
             except OSError:
                 pass
+
+
+def _start_raw_server(send_fn):
+    try:
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    except PermissionError as e:
+        pytest.skip(f"Socket creation blocked: {e}")
+
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind(("127.0.0.1", 0))
+    server.listen(1)
+    port = server.getsockname()[1]
+
+    def _server():
+        try:
+            conn, _ = server.accept()
+            try:
+                send_fn(conn)
+            finally:
+                try:
+                    conn.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+                conn.close()
+        finally:
+            server.close()
+
+    thread = threading.Thread(target=_server, daemon=True)
+    thread.start()
+    return port, thread
 
 
 @pytest.mark.integration
@@ -171,6 +205,75 @@ def test_threadedserver_client_read_times_out_without_response():
                 pass
         server.stop()
         server.join(timeout=3)
+
+
+@pytest.mark.integration
+@pytest.mark.timeout(10)
+def test_client_raises_framing_error_on_checksum_mismatch():
+    """Client raises FramingError when payload checksum is invalid."""
+    payload = b'{"echo": "bad-checksum"}'
+    bad_checksum = (zlib.crc32(payload) + 1) & 0xFFFFFFFF
+
+    def _send_bad_checksum(conn):
+        header = struct.pack(
+            jsocket_base.FRAME_HEADER_FMT,
+            jsocket_base.FRAME_MAGIC,
+            len(payload),
+            bad_checksum,
+        )
+        conn.sendall(header + payload)
+
+    port, thread = _start_raw_server(_send_bad_checksum)
+    client = None
+    try:
+        client = jsocket.JsonClient(address="127.0.0.1", port=port)
+        client.timeout = 0.5
+        assert client.connect() is True
+        with pytest.raises(jsocket.FramingError):
+            client.read_obj()
+    finally:
+        if client is not None:
+            try:
+                client.close()
+            except OSError:
+                pass
+        thread.join(timeout=1.0)
+
+
+@pytest.mark.integration
+@pytest.mark.timeout(10)
+def test_client_raises_framing_error_on_payload_timeout():
+    """Client raises FramingError when payload read times out."""
+    base_payload = b'{"echo": "slow"}'
+    claimed_len = len(base_payload) + 32
+    full_payload = base_payload + (b" " * (claimed_len - len(base_payload)))
+    checksum = zlib.crc32(full_payload) & 0xFFFFFFFF
+
+    def _send_partial_then_stall(conn):
+        header = struct.pack(
+            jsocket_base.FRAME_HEADER_FMT,
+            jsocket_base.FRAME_MAGIC,
+            claimed_len,
+            checksum,
+        )
+        conn.sendall(header + full_payload[:5])
+        time.sleep(0.5)
+
+    port, thread = _start_raw_server(_send_partial_then_stall)
+    client = None
+    try:
+        client = jsocket.JsonClient(address="127.0.0.1", port=port)
+        client.timeout = 0.2
+        assert client.connect() is True
+        with pytest.raises(jsocket.FramingError):
+            client.read_obj()
+    finally:
+        if client is not None:
+            try:
+                client.close()
+            except OSError:
+                pass
+        thread.join(timeout=1.0)
 
 
 @pytest.mark.integration
