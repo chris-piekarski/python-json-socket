@@ -8,8 +8,7 @@ dynamic = ["version"]
 description = "Python JSON Server & Client"
 readme = "README.md"
 requires-python = ">=3.8"
-license = "Apache-2.0"
-license-files = ["LICENSE"]
+license = {text = "Apache-2.0"}
 authors = [{name = "Christopher Piekarski", email = "chris@cpiekarski.com"}]
 maintainers = [{name = "Christopher Piekarski", email = "chris@cpiekarski.com"}]
 keywords = ["json", "socket", "server", "client"]
@@ -29,6 +28,7 @@ Homepage = "https://cpiekarski.com/2012/01/25/python-json-client-server-redux/"
 
 [tool.setuptools]
 packages = ["jsocket"]
+license-files = ["LICENSE"]
 
 [tool.setuptools.dynamic]
 version = {attr = "jsocket._version.__version__"}
