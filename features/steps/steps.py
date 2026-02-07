@@ -23,7 +23,8 @@ class MyServer(jsocket.ThreadedServer):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.timeout = 2.0
+        if not any(key in kwargs for key in ("timeout", "accept_timeout", "recv_timeout")):
+            self.timeout = 2.0
 
     def _process_message(self, obj):
         # Echo payloads that include 'echo' for verification
@@ -36,6 +37,33 @@ class MyServer(jsocket.ThreadedServer):
 def start_server(context):
     # Bind to an ephemeral port to avoid port conflicts
     context.jsonserver = MyServer(address='127.0.0.1', port=0)
+    context.jsonserver.start()
+    # Discover the chosen port
+    _, context.server_port = context.jsonserver.socket.getsockname()
+
+
+@given(r"I start the server with accept timeout (\d+(?:\.\d+)?) seconds")
+def start_server_with_accept_timeout(context, seconds):
+    # Bind to an ephemeral port to avoid port conflicts
+    context.jsonserver = MyServer(
+        address='127.0.0.1',
+        port=0,
+        accept_timeout=float(seconds),
+    )
+    context.jsonserver.start()
+    # Discover the chosen port
+    _, context.server_port = context.jsonserver.socket.getsockname()
+
+
+@given(r"I start the server with accept timeout (\d+(?:\.\d+)?) seconds and recv timeout (\d+(?:\.\d+)?) seconds")
+def start_server_with_accept_and_recv_timeout(context, accept_seconds, recv_seconds):
+    # Bind to an ephemeral port to avoid port conflicts
+    context.jsonserver = MyServer(
+        address='127.0.0.1',
+        port=0,
+        accept_timeout=float(accept_seconds),
+        recv_timeout=float(recv_seconds),
+    )
     context.jsonserver.start()
     # Discover the chosen port
     _, context.server_port = context.jsonserver.socket.getsockname()
@@ -54,6 +82,11 @@ def connect_client(context):
 @when(r"the client sends the object (\{.*\})")
 def client_sends_object(context, obj):
     context.jsonclient.send_obj(json.loads(obj))
+
+
+@when(r"I wait (\d+(?:\.\d+)?) seconds")
+def wait_seconds(context, seconds):
+    time.sleep(float(seconds))
 
 
 @when(r"the server sends the object (\{.*\})")
@@ -83,6 +116,7 @@ def within_seconds_server_connected(context, seconds):
 
 
 @given(r"I stop the server")
+@when(r"I stop the server")
 def stop_server(context):
     server = getattr(context, 'jsonserver', None)
     if server is not None:
