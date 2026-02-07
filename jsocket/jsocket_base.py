@@ -337,7 +337,7 @@ class JsonClient(JsonSocket):
     def __init__(self, address='127.0.0.1', port=5489, timeout=2.0, recv_timeout=None):
         super().__init__(address, port, timeout=timeout, recv_timeout=recv_timeout)
         if self.socket is not None:
-            self.socket.settimeout(self._recv_timeout)
+            self.socket.settimeout(self._timeout)
 
     def connect(self):
         """Attempt to connect to the server up to 10 times with backoff."""
@@ -350,11 +350,13 @@ class JsonClient(JsonSocket):
                 # Recreate the socket to avoid retrying on a potentially bad fd.
                 self._close_socket()
                 self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self.socket.settimeout(self._recv_timeout)
+                self.socket.settimeout(self._timeout)
                 self.conn = self.socket
                 logger.debug("recreated socket for retry %d to %s:%s", attempt, self.address, self.port)
                 time.sleep(3)
                 continue
             logger.info("...Socket Connected")
+            # Switch to recv_timeout after successful connection
+            self.socket.settimeout(self._recv_timeout)
             return True
         return False
