@@ -22,6 +22,7 @@ __copyright__= """
 """
 import threading
 import socket
+import select
 import time
 import logging
 import abc
@@ -61,6 +62,91 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.AB
         self._stats_lock = threading.Lock()
         self._client_started_at = None
         self._client_id = None
+        self._wakeup_r = None
+        self._wakeup_w = None
+        self._init_wakeup()
+
+    def _init_wakeup(self):
+        """Create a wakeup socketpair to interrupt blocking accept."""
+        try:
+            self._wakeup_r, self._wakeup_w = socket.socketpair()
+            self._wakeup_r.setblocking(False)
+            self._wakeup_w.setblocking(False)
+            return
+        except (AttributeError, OSError):
+            pass
+        # Fallback: create a loopback TCP pair
+        try:
+            listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            listener.bind(("127.0.0.1", 0))
+            listener.listen(1)
+            writer = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            writer.connect(listener.getsockname())
+            reader, _ = listener.accept()
+            listener.close()
+            reader.setblocking(False)
+            writer.setblocking(False)
+            self._wakeup_r, self._wakeup_w = reader, writer
+        except OSError:
+            self._wakeup_r, self._wakeup_w = None, None
+
+    def _signal_wakeup(self):
+        """Wake the accept loop if it is blocked."""
+        sock = getattr(self, "_wakeup_w", None)
+        if sock is None:
+            return
+        try:
+            sock.send(b"\x00")
+        except OSError:
+            pass
+
+    def _drain_wakeup(self):
+        sock = getattr(self, "_wakeup_r", None)
+        if sock is None:
+            return
+        try:
+            while True:
+                if not sock.recv(1024):
+                    break
+        except (BlockingIOError, OSError):
+            pass
+
+    def _close_wakeup(self):
+        for sock in (getattr(self, "_wakeup_r", None), getattr(self, "_wakeup_w", None)):
+            if sock is None:
+                continue
+            try:
+                sock.close()
+            except OSError:
+                pass
+        self._wakeup_r = None
+        self._wakeup_w = None
+
+    def _wait_for_accept(self) -> bool:
+        """Block until a client can be accepted or a wakeup is signaled."""
+        sock = getattr(self, "socket", None)
+        wake = getattr(self, "_wakeup_r", None)
+        if sock is None or wake is None:
+            return True
+        try:
+            if hasattr(self, "_listen"):
+                self._listen()
+        except OSError as e:
+            logger.debug("listen error on %s:%s: %s", self.address, self.port, e)
+            return False
+        while getattr(self, "_is_alive", False):
+            try:
+                readable, _, _ = select.select([sock, wake], [], [], None)
+            except (OSError, ValueError) as e:
+                logger.debug("select error on %s:%s: %s", self.address, self.port, e)
+                return False
+            if wake in readable:
+                self._drain_wakeup()
+                return False
+            if sock in readable:
+                return True
+        return False
 
     @abc.abstractmethod
     def _process_message(self, obj) -> Optional[dict]:
@@ -102,6 +188,8 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.AB
 
     def _accept_client(self) -> bool:
         """Accept an incoming connection; return True when a client connects."""
+        if not self._wait_for_accept():
+            return False
         try:
             self.accept_connection()
         except socket.timeout as e:
@@ -155,6 +243,7 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.AB
             self.close()
         except OSError:
             pass
+        self._close_wakeup()
 
     def start(self):
         """ Starts the threaded server. 
@@ -174,6 +263,7 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.AB
         """
         self._is_alive = False
         self._clear_client_stats()
+        self._signal_wakeup()
         logger.debug("Threaded Server stopped on %s:%s", self.address, self.port)
 
 
@@ -181,10 +271,15 @@ class ServerFactoryThread(threading.Thread, jsocket_base.JsonSocket, metaclass=a
     """Per-connection worker thread used by ServerFactory."""
 
     def __init__(self, **kwargs):
-        threading.Thread.__init__(self, **kwargs)
+        create_socket = kwargs.pop("create_socket", False)
+        thread_kwargs = {}
+        for key in ("group", "target", "name", "args", "kwargs", "daemon"):
+            if key in kwargs:
+                thread_kwargs[key] = kwargs.pop(key)
+        threading.Thread.__init__(self, **thread_kwargs)
         self.socket = None
         self.conn = None
-        jsocket_base.JsonSocket.__init__(self, **kwargs)
+        jsocket_base.JsonSocket.__init__(self, create_socket=create_socket, **kwargs)
         self._is_alive = False
         self._client_started_at = None
         self._client_id = None
@@ -195,8 +290,20 @@ class ServerFactoryThread(threading.Thread, jsocket_base.JsonSocket, metaclass=a
             @param new_sock socket to replace the existing default jsocket.JsonSocket object 
             @retval None
         """
+        existing_socket = getattr(self, "socket", None)
+        if existing_socket is not None and existing_socket is not new_sock:
+            try:
+                self._close_socket()
+            except OSError:
+                pass
         self.socket = new_sock
         self.conn = self.socket
+        try:
+            timeout = getattr(self, "_recv_timeout", getattr(self, "_timeout", None))
+            if timeout is not None:
+                self.socket.settimeout(timeout)
+        except OSError:
+            pass
         try:
             addr = new_sock.getpeername()
         except OSError:
@@ -260,7 +367,17 @@ class ServerFactoryThread(threading.Thread, jsocket_base.JsonSocket, metaclass=a
 class ServerFactory(ThreadedServer):
     """Accepts clients and spawns a ServerFactoryThread per connection."""
     def __init__(self, server_thread, **kwargs):
-        ThreadedServer.__init__(self, address=kwargs['address'], port=kwargs['port'])
+        init_kwargs = {
+            "address": kwargs["address"],
+            "port": kwargs["port"],
+        }
+        if "timeout" in kwargs:
+            init_kwargs["timeout"] = kwargs["timeout"]
+        if "accept_timeout" in kwargs:
+            init_kwargs["accept_timeout"] = kwargs["accept_timeout"]
+        if "recv_timeout" in kwargs:
+            init_kwargs["recv_timeout"] = kwargs["recv_timeout"]
+        ThreadedServer.__init__(self, **init_kwargs)
         if not issubclass(server_thread, ServerFactoryThread):
             raise TypeError("serverThread not of type", ServerFactoryThread)
         self._thread_type = server_thread
@@ -269,6 +386,7 @@ class ServerFactory(ThreadedServer):
         self._thread_args = kwargs
         self._thread_args.pop('address', None)
         self._thread_args.pop('port', None)
+        self._thread_args.pop('accept_timeout', None)
 
     def _process_message(self, obj) -> Optional[dict]:
         """ServerFactory does not process messages itself."""
@@ -283,6 +401,8 @@ class ServerFactory(ThreadedServer):
             tmp = self._thread_type(**self._thread_args)
             self._purge_threads()
             while not self.connected and self._is_alive:
+                if not self._wait_for_accept():
+                    continue
                 try:
                     self.accept_connection()
                 except socket.timeout as e:
@@ -336,6 +456,7 @@ class ServerFactory(ThreadedServer):
     def stop(self):
         # Stop accepting and stop all workers
         self._is_alive = False
+        self._signal_wakeup()
         try:
             self.stop_all()
         except Exception:  # pylint: disable=broad-exception-caught

@@ -48,6 +48,42 @@ class NoResponseServer(jsocket.ThreadedServer):
         return None
 
 
+class SlowResponseServer(jsocket.ThreadedServer):
+    """Server that delays its response to trigger client timeouts."""
+
+    def __init__(self, delay, **kwargs):
+        super().__init__(**kwargs)
+        self.timeout = 0.5
+        self._delay = delay
+
+    def _process_message(self, obj):
+        time.sleep(self._delay)
+        if isinstance(obj, dict) and "echo" in obj:
+            return obj
+        return None
+
+
+class FirstSlowResponseServer(jsocket.ThreadedServer):
+    """Server that delays only the first response."""
+
+    def __init__(self, first_delay, **kwargs):
+        super().__init__(**kwargs)
+        self.timeout = 0.5
+        self._first_delay = first_delay
+        self._count = 0
+        self._count_lock = threading.Lock()
+
+    def _process_message(self, obj):
+        with self._count_lock:
+            self._count += 1
+            count = self._count
+        if count == 1:
+            time.sleep(self._first_delay)
+        if isinstance(obj, dict) and "echo" in obj:
+            return obj
+        return None
+
+
 def _send_partial_payload(address, port, payload, partial_len):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
@@ -197,6 +233,79 @@ def test_threadedserver_client_read_times_out_without_response():
         client.send_obj({"echo": "no-response"})
         with pytest.raises(socket.timeout):
             client.read_obj()
+    finally:
+        if client is not None:
+            try:
+                client.close()
+            except OSError:
+                pass
+        server.stop()
+        server.join(timeout=3)
+
+
+@pytest.mark.integration
+@pytest.mark.timeout(10)
+def test_client_timeout_then_reads_late_response():
+    """Client can timeout on the first read and still receive a delayed response."""
+    try:
+        server = SlowResponseServer(delay=0.3, address="127.0.0.1", port=0)
+    except PermissionError as e:
+        pytest.skip(f"Socket creation blocked: {e}")
+
+    client = None
+    _, port = server.socket.getsockname()
+    server.start()
+
+    try:
+        client = jsocket.JsonClient(address="127.0.0.1", port=port)
+        client.timeout = 0.1
+        assert client.connect() is True
+        payload = {"echo": "late-response"}
+        client.send_obj(payload)
+        with pytest.raises(socket.timeout):
+            client.read_obj()
+
+        client.timeout = 2.0
+        assert client.read_obj() == payload
+    finally:
+        if client is not None:
+            try:
+                client.close()
+            except OSError:
+                pass
+        server.stop()
+        server.join(timeout=3)
+
+
+@pytest.mark.integration
+@pytest.mark.timeout(10)
+def test_client_timeout_then_send_another_message():
+    """Client can send another message after a read timeout."""
+    try:
+        server = FirstSlowResponseServer(first_delay=0.3, address="127.0.0.1", port=0)
+    except PermissionError as e:
+        pytest.skip(f"Socket creation blocked: {e}")
+
+    client = None
+    _, port = server.socket.getsockname()
+    server.start()
+
+    try:
+        client = jsocket.JsonClient(address="127.0.0.1", port=port)
+        client.timeout = 0.1
+        assert client.connect() is True
+
+        first = {"echo": "first"}
+        client.send_obj(first)
+        with pytest.raises(socket.timeout):
+            client.read_obj()
+
+        second = {"echo": "second"}
+        client.send_obj(second)
+
+        client.timeout = 2.0
+        assert client.read_obj() == first
+        assert client.read_obj() == second
     finally:
         if client is not None:
             try:

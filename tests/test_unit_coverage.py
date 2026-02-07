@@ -44,6 +44,22 @@ class FakeSocket:  # pylint: disable=missing-function-docstring
         return len(data)
 
 
+class TimeoutSocket:  # pylint: disable=missing-function-docstring
+    """Socket stub that records timeout settings."""
+
+    def __init__(self):
+        self.timeouts = []
+
+    def settimeout(self, timeout):
+        self.timeouts.append(timeout)
+
+    def getpeername(self):
+        return ("127.0.0.1", 12345)
+
+    def fileno(self):  # pragma: no cover - safety for debug paths
+        return 1
+
+
 def _make_base_socket():
     """Build a JsonSocket stub with a fake connection."""
     sock = jsocket_base.JsonSocket.__new__(jsocket_base.JsonSocket)
@@ -68,6 +84,104 @@ def test_send_obj_rejects_oversize():
     sock._max_message_size = 1
     with pytest.raises(ValueError):
         sock.send_obj({"x": "too-big"})
+
+
+def test_jsonclient_init_skips_settimeout_when_socket_missing(monkeypatch):
+    """JsonClient should tolerate a JsonSocket init that leaves socket unset."""
+
+    def fake_init(self, address='127.0.0.1', port=0, timeout=2.0, recv_timeout=None, **kwargs):
+        self.socket = None
+        self.conn = None
+        self._timeout = timeout
+        self._recv_timeout = timeout if recv_timeout is None else recv_timeout
+
+    monkeypatch.setattr(jsocket_base.JsonSocket, "__init__", fake_init, raising=True)
+
+    client = jsocket_base.JsonClient(address="127.0.0.1", port=0)
+    assert client.socket is None
+
+
+def test_timeout_sets_accept_and_recv_timeouts():
+    """timeout should update accept_timeout and recv_timeout."""
+    sock = jsocket_base.JsonSocket(create_socket=False)
+    sock.socket = TimeoutSocket()
+    sock.conn = TimeoutSocket()
+    sock._is_server = False
+
+    sock.timeout = 1.5
+
+    assert sock.timeout == 1.5
+    assert sock.accept_timeout == 1.5
+    assert sock.recv_timeout == 1.5
+    assert sock.socket.timeouts == [1.5]
+    assert sock.conn.timeouts == [1.5]
+
+
+def test_timeout_sets_recv_on_server_connection():
+    """timeout should update recv timeout for server connections."""
+    sock = jsocket_base.JsonSocket(create_socket=False)
+    sock.socket = TimeoutSocket()
+    sock.conn = TimeoutSocket()
+    sock._is_server = True
+
+    sock.timeout = 2.5
+
+    assert sock.socket.timeouts == [2.5]
+    assert sock.conn.timeouts == [2.5]
+
+
+def test_accept_timeout_updates_listening_socket_only():
+    """accept_timeout should only update the listening socket."""
+    sock = jsocket_base.JsonSocket(create_socket=False)
+    sock.socket = TimeoutSocket()
+    sock.conn = TimeoutSocket()
+    sock._is_server = True
+
+    sock.accept_timeout = 3.0
+
+    assert sock.socket.timeouts == [3.0]
+    assert sock.conn.timeouts == []
+    assert sock.recv_timeout == 2.0
+
+
+def test_accept_timeout_no_socket_noop():
+    """accept_timeout should be a no-op when no socket exists."""
+    sock = jsocket_base.JsonSocket(create_socket=False)
+    sock.accept_timeout = 6.0
+    assert sock.accept_timeout == 6.0
+
+
+def test_recv_timeout_updates_connection_socket_only():
+    """recv_timeout should only update the connection socket."""
+    sock = jsocket_base.JsonSocket(create_socket=False)
+    sock.socket = TimeoutSocket()
+    sock.conn = TimeoutSocket()
+    sock._is_server = True
+
+    sock.recv_timeout = 4.0
+
+    assert sock.socket.timeouts == []
+    assert sock.conn.timeouts == [4.0]
+    assert sock.accept_timeout == 2.0
+
+
+def test_recv_timeout_skips_listen_socket_for_server():
+    """recv_timeout should not update when conn is the listening socket."""
+    sock = jsocket_base.JsonSocket(create_socket=False)
+    sock.socket = TimeoutSocket()
+    sock.conn = sock.socket
+    sock._is_server = True
+
+    sock.recv_timeout = 3.0
+
+    assert sock.socket.timeouts == []
+
+
+def test_recv_timeout_no_conn_noop():
+    """recv_timeout should no-op when no connection exists."""
+    sock = jsocket_base.JsonSocket(create_socket=False)
+    sock.recv_timeout = 7.0
+    assert sock.recv_timeout == 7.0
 
 
 def test_read_header_invalid_magic_closes():
@@ -530,6 +644,53 @@ def test_serverfactory_process_message_returns_none(monkeypatch):
 
     factory = tserver.ServerFactory(_FactoryWorker, address="127.0.0.1", port=0)
     assert factory._process_message({"x": 1}) is None
+
+
+def test_serverfactory_routes_accept_and_recv_timeouts(monkeypatch):
+    """ServerFactory should apply accept_timeout to the factory and recv_timeout to workers."""
+    captured = {}
+
+    def fake_init(self, address, port, timeout=2.0, accept_timeout=None, recv_timeout=None):
+        """Stub ThreadedServer initializer for isolation."""
+        captured["timeout"] = timeout
+        captured["accept_timeout"] = accept_timeout
+        captured["recv_timeout"] = recv_timeout
+        self.address = address
+        self.port = port
+        self.conn = None
+        self.socket = None
+        self._is_alive = False
+        self._stats_lock = threading.Lock()
+        self._client_started_at = None
+        self._client_id = None
+        self._accept_timeout = accept_timeout
+        self._recv_timeout = recv_timeout
+
+    monkeypatch.setattr(tserver.ThreadedServer, "__init__", fake_init, raising=True)
+
+    class Worker(tserver.ServerFactoryThread):
+        def _process_message(self, obj):  # pragma: no cover - not used
+            return None
+
+    factory = tserver.ServerFactory(
+        Worker,
+        address="127.0.0.1",
+        port=0,
+        timeout=5.0,
+        accept_timeout=10.0,
+        recv_timeout=2.0,
+    )
+
+    assert captured["timeout"] == 5.0
+    assert captured["accept_timeout"] == 10.0
+    assert captured["recv_timeout"] == 2.0
+    assert "accept_timeout" not in factory._thread_args
+    assert factory._thread_args["recv_timeout"] == 2.0
+
+    worker = Worker(**factory._thread_args)
+    sock = TimeoutSocket()
+    worker.swap_socket(sock)
+    assert sock.timeouts == [2.0]
 
 
 def test_serverfactory_run_closes_accepted_conn_when_stopping():

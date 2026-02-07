@@ -50,17 +50,32 @@ def _socket_fileno(sock):
 class JsonSocket:
     """Lightweight JSON-over-TCP socket wrapper with length-prefixed framing."""
 
-    def __init__(self, address='127.0.0.1', port=5489, timeout=2.0, max_message_size=DEFAULT_MAX_MESSAGE_SIZE):
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.conn = self.socket
+    def __init__(
+        self,
+        address='127.0.0.1',
+        port=5489,
+        timeout=2.0,
+        max_message_size=DEFAULT_MAX_MESSAGE_SIZE,
+        accept_timeout=None,
+        recv_timeout=None,
+        create_socket=True,
+    ):
+        self.socket = None
+        self.conn = None
         self._timeout = timeout
+        self._accept_timeout = timeout if accept_timeout is None else accept_timeout
+        self._recv_timeout = timeout if recv_timeout is None else recv_timeout
         self._address = address
         self._port = port
         self._max_message_size = None
         self.max_message_size = max_message_size
         self._last_client_addr = None
-        # Ensure the primary socket respects timeout for accept/connect operations
-        self.socket.settimeout(self._timeout)
+        self._is_server = False
+        if create_socket:
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.conn = self.socket
+            # Primary socket timeout (accept for servers; connect/read for clients).
+            self.socket.settimeout(self._accept_timeout)
 
     def send_obj(self, obj):
         """Send a JSON-serializable object over the connection."""
@@ -172,12 +187,48 @@ class JsonSocket:
 
     def _get_timeout(self):
         """Get the current socket timeout in seconds."""
-        return self._timeout
+        return getattr(self, "_timeout", None)
 
     def _set_timeout(self, timeout):
         """Set the socket timeout in seconds and apply to the main socket."""
         self._timeout = timeout
-        self.socket.settimeout(timeout)
+        self._accept_timeout = timeout
+        self._recv_timeout = timeout
+        sock = getattr(self, "socket", None)
+        if sock is not None:
+            sock.settimeout(self._accept_timeout)
+        conn = getattr(self, "conn", None)
+        if conn is not None:
+            if getattr(self, "_is_server", False):
+                if conn is not sock:
+                    conn.settimeout(self._recv_timeout)
+            else:
+                conn.settimeout(self._recv_timeout)
+
+    def _get_accept_timeout(self):
+        """Get the listening/accept timeout in seconds."""
+        return getattr(self, "_accept_timeout", getattr(self, "_timeout", None))
+
+    def _set_accept_timeout(self, timeout):
+        """Set the listening/accept timeout in seconds."""
+        self._accept_timeout = timeout
+        sock = getattr(self, "socket", None)
+        if sock is not None:
+            sock.settimeout(timeout)
+
+    def _get_recv_timeout(self):
+        """Get the connection recv timeout in seconds."""
+        return getattr(self, "_recv_timeout", getattr(self, "_timeout", None))
+
+    def _set_recv_timeout(self, timeout):
+        """Set the connection recv timeout in seconds."""
+        self._recv_timeout = timeout
+        conn = getattr(self, "conn", None)
+        sock = getattr(self, "socket", None)
+        if conn is not None:
+            if getattr(self, "_is_server", False) and conn is sock:
+                return
+            conn.settimeout(timeout)
 
     def _get_address(self):
         """Return the configured bind address."""
@@ -209,7 +260,9 @@ class JsonSocket:
             raise ValueError("max_message_size must be positive")
         self._max_message_size = size
 
-    timeout = property(_get_timeout, _set_timeout, doc='Get/set the socket timeout')
+    timeout = property(_get_timeout, _set_timeout, doc='Get/set accept/recv timeout together')
+    accept_timeout = property(_get_accept_timeout, _set_accept_timeout, doc='Get/set accept timeout')
+    recv_timeout = property(_get_recv_timeout, _set_recv_timeout, doc='Get/set recv timeout')
     address = property(_get_address, _set_address, doc='read only property socket address')
     port = property(_get_port, _set_port, doc='read only property socket port')
     max_message_size = property(_get_max_message_size, _set_max_message_size, doc='Get/set max message size in bytes')
@@ -218,8 +271,15 @@ class JsonSocket:
 class JsonServer(JsonSocket):
     """Server socket that accepts one connection at a time."""
 
-    def __init__(self, address='127.0.0.1', port=5489):
-        super().__init__(address, port)
+    def __init__(self, address='127.0.0.1', port=5489, timeout=2.0, accept_timeout=None, recv_timeout=None):
+        super().__init__(
+            address,
+            port,
+            timeout=timeout,
+            accept_timeout=accept_timeout,
+            recv_timeout=recv_timeout,
+        )
+        self._is_server = True
         self._bind()
 
     def _close_connection(self):
@@ -253,7 +313,7 @@ class JsonServer(JsonSocket):
         self._listen()
         self.conn, addr = self._accept()
         self._last_client_addr = addr
-        self.conn.settimeout(self.timeout)
+        self.conn.settimeout(self.recv_timeout)
         logger.debug(
             "connection accepted, conn socket (%s,%d,%s)", addr[0], addr[1], str(self.conn.gettimeout())
         )
@@ -274,8 +334,10 @@ class JsonServer(JsonSocket):
 class JsonClient(JsonSocket):
     """Client socket for connecting to a JsonServer and exchanging JSON messages."""
 
-    def __init__(self, address='127.0.0.1', port=5489):
-        super().__init__(address, port)
+    def __init__(self, address='127.0.0.1', port=5489, timeout=2.0, recv_timeout=None):
+        super().__init__(address, port, timeout=timeout, recv_timeout=recv_timeout)
+        if self.socket is not None:
+            self.socket.settimeout(self._recv_timeout)
 
     def connect(self):
         """Attempt to connect to the server up to 10 times with backoff."""
@@ -288,7 +350,7 @@ class JsonClient(JsonSocket):
                 # Recreate the socket to avoid retrying on a potentially bad fd.
                 self._close_socket()
                 self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self.socket.settimeout(self._timeout)
+                self.socket.settimeout(self._recv_timeout)
                 self.conn = self.socket
                 logger.debug("recreated socket for retry %d to %s:%s", attempt, self.address, self.port)
                 time.sleep(3)
