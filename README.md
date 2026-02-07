@@ -37,7 +37,7 @@ import jsocket
 class Echo(jsocket.ThreadedServer):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.timeout = 2.0
+        self.timeout = 2.0  # sets both accept and recv timeouts
 
     # Return a dict to send a response back to the client
     def _process_message(self, obj):
@@ -70,7 +70,7 @@ import jsocket
 class Worker(jsocket.ServerFactoryThread):
     def __init__(self):
         super().__init__()
-        self.timeout = 2.0
+        self.timeout = 2.0  # sets recv timeout for this worker
 
     def _process_message(self, obj):
         if isinstance(obj, dict) and 'message' in obj:
@@ -89,7 +89,9 @@ API Highlights
   - `connect()` returns True on success
   - `send_obj(dict)` sends a JSON object
   - `read_obj()` blocks until a full message is received; raises `socket.timeout` or `RuntimeError("socket connection broken")`
-  - `timeout` property controls socket timeouts
+  - `timeout` sets both accept and recv timeouts
+  - `accept_timeout` controls the server's accept timeout
+  - `recv_timeout` controls the connection read timeout
 
 - ThreadedServer:
   - Subclass and implement `_process_message(self, obj) -> Optional[dict]`
