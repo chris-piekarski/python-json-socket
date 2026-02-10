@@ -356,5 +356,7 @@ class JsonClient(JsonSocket):
                 time.sleep(3)
                 continue
             logger.info("...Socket Connected")
+            # Switch to recv_timeout after successful connection
+            self.socket.settimeout(self._recv_timeout)
             return True
         return False
