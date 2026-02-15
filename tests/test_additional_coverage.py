@@ -29,6 +29,67 @@ def test_client_connect_failure_returns_false(monkeypatch):
     assert client.connect() is False
 
 
+def test_client_connect_recreates_closed_socket_without_backoff(monkeypatch):
+    """connect() should refresh a closed fd before dialing, avoiding backoff sleep."""
+
+    events = []
+
+    class ClosedSocket:
+        def fileno(self):
+            return -1
+
+        def settimeout(self, timeout):
+            events.append(("closed_settimeout", timeout))
+
+        def connect(self, addr):  # pragma: no cover - should never be called
+            events.append(("closed_connect", addr))
+            raise AssertionError("connect() attempted on closed socket")
+
+        def shutdown(self, how):  # pylint: disable=unused-argument
+            return None
+
+        def close(self):
+            return None
+
+    class FreshSocket:
+        def fileno(self):
+            return 42
+
+        def settimeout(self, timeout):
+            events.append(("fresh_settimeout", timeout))
+
+        def connect(self, addr):
+            events.append(("fresh_connect", addr))
+            return None
+
+        def shutdown(self, how):  # pylint: disable=unused-argument
+            return None
+
+        def close(self):
+            return None
+
+    def fake_socket(*args, **kwargs):  # pylint: disable=unused-argument
+        return FreshSocket()
+
+    def no_sleep(*args, **kwargs):  # pylint: disable=unused-argument
+        raise AssertionError("unexpected connect backoff sleep")
+
+    monkeypatch.setattr(jsocket.jsocket_base.socket, "socket", fake_socket, raising=True)
+    monkeypatch.setattr(jsocket.jsocket_base.time, "sleep", no_sleep, raising=True)
+
+    client = jsocket.jsocket_base.JsonClient.__new__(jsocket.jsocket_base.JsonClient)
+    client.socket = ClosedSocket()
+    client.conn = client.socket
+    client._recv_timeout = 0.25
+    client._address = "127.0.0.1"
+    client._port = 5489
+    client._is_listening = False
+
+    assert client.connect() is True
+    assert ("fresh_connect", ("127.0.0.1", 5489)) in events
+    assert not [e for e in events if e[0] == "closed_connect"]
+
+
 def test_close_idempotent_and_connected_guard():
     """close() is safe to call multiple times; connected guard tolerates None."""
     # Client close idempotence

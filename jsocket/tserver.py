@@ -76,6 +76,9 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.AB
         except (AttributeError, OSError):
             pass
         # Fallback: create a loopback TCP pair
+        listener = None
+        writer = None
+        reader = None
         try:
             listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -84,12 +87,24 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.AB
             writer = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             writer.connect(listener.getsockname())
             reader, _ = listener.accept()
-            listener.close()
             reader.setblocking(False)
             writer.setblocking(False)
             self._wakeup_r, self._wakeup_w = reader, writer
         except OSError:
+            for sock in (reader, writer):
+                if sock is None:
+                    continue
+                try:
+                    sock.close()
+                except OSError:
+                    pass
             self._wakeup_r, self._wakeup_w = None, None
+        finally:
+            if listener is not None:
+                try:
+                    listener.close()
+                except OSError:
+                    pass
 
     def _signal_wakeup(self):
         """Wake the accept loop if it is blocked."""
@@ -398,7 +413,6 @@ class ServerFactory(ThreadedServer):
         if not self._is_alive:
             self._is_alive = True
         while self._is_alive:
-            tmp = self._thread_type(**self._thread_args)
             self._purge_threads()
             while not self.connected and self._is_alive:
                 if not self._wait_for_accept():
@@ -409,7 +423,10 @@ class ServerFactory(ThreadedServer):
                     logger.debug("factory accept timeout on %s:%s: %s", self.address, self.port, e)
                     continue
                 except Exception as e:  # pylint: disable=broad-exception-caught
-                    logger.exception("accept error: %s", e)
+                    if self._is_alive:
+                        logger.exception("factory accept error on %s:%s: %s", self.address, self.port, e)
+                    else:
+                        logger.debug("factory stopping; accept loop exiting (%s:%s)", self.address, self.port)
                     continue
                 else:
                     # Hand off the accepted connection to the worker
@@ -427,10 +444,42 @@ class ServerFactory(ThreadedServer):
                         except OSError:
                             pass
                         break
-                    tmp.swap_socket(accepted_conn)
-                    tmp.start()
+                    try:
+                        tmp = self._thread_type(**self._thread_args)
+                        tmp.swap_socket(accepted_conn)
+                        tmp.start()
+                    except Exception as e:  # pylint: disable=broad-exception-caught
+                        # Worker construction/hand-off failed; ensure the accepted connection is closed
+                        try:
+                            accepted_conn.shutdown(socket.SHUT_RDWR)
+                        except OSError:
+                            pass
+                        try:
+                            accepted_conn.close()
+                        except OSError:
+                            pass
+                        if self._is_alive:
+                            logger.exception(
+                                "factory worker handoff error on %s:%s: %s",
+                                self.address,
+                                self.port,
+                                e,
+                            )
+                        else:
+                            logger.debug(
+                                "factory stopping; worker handoff aborted (%s:%s)",
+                                self.address,
+                                self.port,
+                            )
+                        # Continue accepting new connections
+                        continue
                     with self._threads_lock:
                         self._threads.append(tmp)
+                    try:
+                        addr = accepted_conn.getpeername()
+                    except OSError:
+                        addr = None
+                    logger.debug("factory spawned worker %s for %s", tmp.name, _format_client_id(addr))
                     break
 
         self._wait_to_exit()
