@@ -444,9 +444,35 @@ class ServerFactory(ThreadedServer):
                         except OSError:
                             pass
                         break
-                    tmp = self._thread_type(**self._thread_args)
-                    tmp.swap_socket(accepted_conn)
-                    tmp.start()
+                    try:
+                        tmp = self._thread_type(**self._thread_args)
+                        tmp.swap_socket(accepted_conn)
+                        tmp.start()
+                    except Exception as e:  # pylint: disable=broad-exception-caught
+                        # Worker construction/hand-off failed; ensure the accepted connection is closed
+                        try:
+                            accepted_conn.shutdown(socket.SHUT_RDWR)
+                        except OSError:
+                            pass
+                        try:
+                            accepted_conn.close()
+                        except OSError:
+                            pass
+                        if self._is_alive:
+                            logger.exception(
+                                "factory worker handoff error on %s:%s: %s",
+                                self.address,
+                                self.port,
+                                e,
+                            )
+                        else:
+                            logger.debug(
+                                "factory stopping; worker handoff aborted (%s:%s)",
+                                self.address,
+                                self.port,
+                            )
+                        # Continue accepting new connections
+                        continue
                     with self._threads_lock:
                         self._threads.append(tmp)
                     try:
