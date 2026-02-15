@@ -1,8 +1,9 @@
-.PHONY: help wheel test-behave test test-behave-cov coverage lint publish version
+.PHONY: help clean wheel test-behave test test-behave-cov coverage lint publish version
 
 help:
 	@echo "Targets:"
 	@echo "  help               Show this help message"
+	@echo "  clean              Remove build/test artifacts"
 	@echo "  wheel              Build a wheel into dist/"
 	@echo "  test-behave        Run behave tests"
 	@echo "  test               Run pytest with coverage (terminal report)"
@@ -36,6 +37,9 @@ coverage:
 lint:
 	mkdir -p .pylint.d
 	PYLINTHOME=.pylint.d pylint jsocket tests features/steps --fail-under=9.0 --persistent=n --disable=duplicate-code
+
+clean:
+	rm -rf build dist *.egg-info .pytest_cache .coverage coverage.xml .coverage_html
 
 wheel:
 	python3 -m build --wheel
