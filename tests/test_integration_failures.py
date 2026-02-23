@@ -8,7 +8,7 @@ import zlib
 import pytest
 
 import jsocket
-import jsocket.jsocket_base as jsocket_base
+from jsocket import jsocket_base
 
 
 class EchoServer(jsocket.ThreadedServer):

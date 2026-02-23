@@ -1,4 +1,4 @@
-.PHONY: help clean wheel test-behave test test-behave-cov coverage lint publish version
+.PHONY: help clean wheel test-behave test test-behave-cov coverage lint publish version net-server net-client
 
 help:
 	@echo "Targets:"
@@ -10,11 +10,28 @@ help:
 	@echo "  test-behave-cov    Run behave with coverage (appends to .coverage)"
 	@echo "  coverage           Run combined pytest + behave coverage and export reports"
 	@echo "  lint               Run pylint with fail-under threshold"
+	@echo "  net-server         Run echo server for network testing (IP required)"
+	@echo "  net-client         Run client for network testing (IP required)"
 	@echo "  publish            Upload dist/* to PyPI via twine"
 	@echo "  version            Show package version and git SHA"
 
 test-behave:
 	PYTHONPATH=. behave -f progress2
+
+PORT ?= 5491
+MODE ?= ping
+NUM ?= 1
+MAX ?= 100
+ERROR ?= 0
+READ ?= 1
+
+net-server:
+	@if [ -z "$(IP)" ]; then echo "Usage: make net-server IP=<bind-ip> [PORT=$(PORT)]"; exit 1; fi
+	PYTHONPATH=. python3 scripts/net_server.py $(IP) --port $(PORT)
+
+net-client:
+	@if [ -z "$(IP)" ]; then echo "Usage: make net-client IP=<server-ip> [PORT=$(PORT)] [MODE=$(MODE)] [NUM=$(NUM)] [MAX=$(MAX)] [ERROR=$(ERROR)] [READ=$(READ)]"; exit 1; fi
+	PYTHONPATH=. python3 scripts/net_client.py $(IP) --port $(PORT) --mode $(MODE) --num $(NUM) --count $(MAX) --error $(ERROR) --read $(READ)
 
 # Pytest coverage (terminal report)
 test:

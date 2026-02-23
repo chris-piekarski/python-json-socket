@@ -56,13 +56,22 @@ def test_threadedserver_client_stats():
         stats = server.get_client_stats()
         assert stats["connected_clients"] == 1
         assert len(stats["clients"]) == 1
-        duration = next(iter(stats["clients"].values()))
-        assert duration >= 0.0
+        client_stats = next(iter(stats["clients"].values()))
+        assert client_stats["connected"] is True
+        assert client_stats["messages_in"] >= 1
+        assert client_stats["messages_out"] >= 1
+        assert client_stats["last_connect_ts"] is not None
+        assert client_stats["last_message_ts"] is not None
+        assert client_stats["avg_payload_in"] > 0.0
+        assert client_stats["avg_payload_out"] > 0.0
 
         client.close()
         time.sleep(0.2)
         stats_after = server.get_client_stats()
         assert stats_after["connected_clients"] == 0
+        client_stats_after = next(iter(stats_after["clients"].values()))
+        assert client_stats_after["connected"] is False
+        assert client_stats_after["disconnects"] >= 1
     finally:
         if client is not None:
             try:
@@ -104,7 +113,11 @@ def test_serverfactory_client_stats():
         stats = server.get_client_stats()
         assert stats["connected_clients"] == 2
         assert len(stats["clients"]) == 2
-        assert all(duration >= 0.0 for duration in stats["clients"].values())
+        for client_stats in stats["clients"].values():
+            assert client_stats["connected"] is True
+            assert client_stats["messages_in"] >= 1
+            assert client_stats["messages_out"] >= 1
+            assert client_stats["last_message_ts"] is not None
     finally:
         if c1 is not None:
             try:
