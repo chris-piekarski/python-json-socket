@@ -27,6 +27,7 @@ import time
 import logging
 import abc
 from typing import Optional
+from contextlib import contextmanager
 
 from jsocket import jsocket_base
 from ._version import __version__
@@ -52,6 +53,303 @@ def _format_client_id(addr) -> str:
         return "unknown"
 
 
+def _now_ts() -> float:
+    return time.time()
+
+
+def _new_failure_counts() -> dict:
+    return {
+        "timeout": 0,
+        "bad_write": 0,
+        "bad_crc": 0,
+        "bad_header": 0,
+        "oversize": 0,
+        "invalid_utf8": 0,
+        "invalid_json": 0,
+        "handler": 0,
+        "framing": 0,
+    }
+
+
+def _new_client_stats(client_id: str) -> dict:
+    return {
+        "client_id": client_id,
+        "connected": False,
+        "connects": 0,
+        "disconnects": 0,
+        "messages_in": 0,
+        "messages_out": 0,
+        "bytes_in": 0,
+        "bytes_out": 0,
+        "total_connected_duration": 0.0,
+        "failures": _new_failure_counts(),
+        "last_connect_ts": None,
+        "last_disconnect_ts": None,
+        "last_message_ts": None,
+        "_connected_since": None,
+    }
+
+
+def _clone_client_stats(stats: dict) -> dict:
+    return {
+        **stats,
+        "failures": dict(stats.get("failures", {})),
+    }
+
+
+def _format_client_stats(stats: dict, now_mono: float) -> dict:
+    snapshot = _clone_client_stats(stats)
+    messages_in = snapshot.get("messages_in", 0) or 0
+    messages_out = snapshot.get("messages_out", 0) or 0
+    bytes_in = snapshot.get("bytes_in", 0) or 0
+    bytes_out = snapshot.get("bytes_out", 0) or 0
+    snapshot["avg_payload_in"] = bytes_in / messages_in if messages_in else 0.0
+    snapshot["avg_payload_out"] = bytes_out / messages_out if messages_out else 0.0
+    connected = snapshot.get("connected") is True
+    connected_since = snapshot.get("_connected_since")
+    current_duration = now_mono - connected_since if (connected and connected_since) else 0.0
+    snapshot["connected_duration"] = current_duration
+    total = snapshot.get("total_connected_duration", 0.0) or 0.0
+    snapshot["total_connected_duration"] = total + current_duration if connected else total
+    snapshot.pop("_connected_since", None)
+    return snapshot
+
+
+@contextmanager
+def _stats_guard(obj):
+    lock = getattr(obj, "_stats_lock", None)
+    if lock is None:
+        yield
+    else:
+        with lock:
+            yield
+
+
+def _ensure_stats_state(obj):
+    if not hasattr(obj, "_client_stats"):
+        obj._client_stats = {}
+    if not hasattr(obj, "_active_client_id"):
+        obj._active_client_id = None
+
+
+def _get_active_client_id(obj):
+    client_id = getattr(obj, "_active_client_id", None)
+    if client_id:
+        return client_id
+    return getattr(obj, "_client_id", None)
+
+
+def _get_or_create_stats(obj, client_id: str) -> dict:
+    _ensure_stats_state(obj)
+    stats = obj._client_stats.get(client_id)
+    if stats is None:
+        stats = _new_client_stats(client_id)
+        obj._client_stats[client_id] = stats
+    return stats
+
+
+def _note_connect(obj, client_id: str) -> None:
+    if not client_id:
+        client_id = "unknown"
+    with _stats_guard(obj):
+        stats = _get_or_create_stats(obj, client_id)
+        stats["connected"] = True
+        stats["connects"] += 1
+        stats["last_connect_ts"] = _now_ts()
+        if stats.get("_connected_since") is None:
+            stats["_connected_since"] = time.monotonic()
+        obj._active_client_id = client_id
+
+
+def _note_disconnect(obj) -> None:
+    client_id = _get_active_client_id(obj)
+    if not client_id:
+        return
+    with _stats_guard(obj):
+        stats = _get_or_create_stats(obj, client_id)
+        if not stats.get("connected"):
+            return
+        stats["connected"] = False
+        stats["disconnects"] += 1
+        stats["last_disconnect_ts"] = _now_ts()
+        connected_since = stats.get("_connected_since")
+        if connected_since is not None:
+            duration = time.monotonic() - connected_since
+            stats["total_connected_duration"] = (stats.get("total_connected_duration") or 0.0) + duration
+        stats["_connected_since"] = None
+        obj._active_client_id = None
+
+
+def _note_message_in(obj, size) -> None:
+    client_id = _get_active_client_id(obj)
+    if not client_id:
+        return
+    msg_size = int(size) if size is not None else 0
+    with _stats_guard(obj):
+        stats = _get_or_create_stats(obj, client_id)
+        stats["messages_in"] += 1
+        stats["bytes_in"] += msg_size
+        stats["last_message_ts"] = _now_ts()
+
+
+def _note_message_out(obj, size) -> None:
+    client_id = _get_active_client_id(obj)
+    if not client_id:
+        return
+    msg_size = int(size) if size is not None else 0
+    with _stats_guard(obj):
+        stats = _get_or_create_stats(obj, client_id)
+        stats["messages_out"] += 1
+        stats["bytes_out"] += msg_size
+        stats["last_message_ts"] = _now_ts()
+
+
+def _note_failure(obj, kind: str) -> None:
+    client_id = _get_active_client_id(obj)
+    if not client_id:
+        return
+    with _stats_guard(obj):
+        stats = _get_or_create_stats(obj, client_id)
+        failures = stats.get("failures")
+        if failures is None:
+            failures = _new_failure_counts()
+            stats["failures"] = failures
+        failures[kind] = failures.get(kind, 0) + 1
+
+
+def _framing_failure_kind(error: Exception) -> str:
+    msg = str(error)
+    if "invalid message header magic" in msg:
+        return "bad_header"
+    if "checksum mismatch" in msg:
+        return "bad_crc"
+    if "exceeds max_message_size" in msg:
+        return "oversize"
+    if "invalid UTF-8 payload" in msg:
+        return "invalid_utf8"
+    if "invalid JSON payload" in msg:
+        return "invalid_json"
+    if "socket read timeout" in msg:
+        return "timeout"
+    return "framing"
+
+
+def _note_framing_failure(obj, error: Exception) -> None:
+    _note_failure(obj, _framing_failure_kind(error))
+
+
+def _max_ts(left, right):
+    if left is None:
+        return right
+    if right is None:
+        return left
+    return right if right > left else left
+
+
+def _normalize_client_id(value):
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, str):
+        return value.strip() or None
+    return str(value)
+
+
+def _extract_client_id(obj):
+    if not isinstance(obj, dict):
+        return None
+    if "client" in obj:
+        return _normalize_client_id(obj.get("client"))
+    if "client_id" in obj:
+        return _normalize_client_id(obj.get("client_id"))
+    return None
+
+
+def _set_client_identity(obj, new_client_id: str) -> None:
+    if not new_client_id:
+        return
+    current_id = _get_active_client_id(obj)
+    if current_id == new_client_id:
+        return
+    _ensure_stats_state(obj)
+    with _stats_guard(obj):
+        existing = obj._client_stats.get(current_id) if current_id else None
+        if existing is None:
+            existing = _new_client_stats(new_client_id)
+        existing["client_id"] = new_client_id
+        target = obj._client_stats.get(new_client_id)
+        if target is None:
+            obj._client_stats[new_client_id] = existing
+        else:
+            obj._client_stats[new_client_id] = _merge_client_stats(target, existing)
+        if current_id and current_id != new_client_id:
+            obj._client_stats.pop(current_id, None)
+        obj._active_client_id = new_client_id
+        if hasattr(obj, "_client_id"):
+            obj._client_id = new_client_id
+
+
+def _merge_client_stats(dest: dict, src: dict) -> dict:
+    if not dest:
+        return _clone_client_stats(src)
+    dest.setdefault("client_id", src.get("client_id"))
+    for key in ("connects", "disconnects", "messages_in", "messages_out", "bytes_in", "bytes_out"):
+        dest[key] = dest.get(key, 0) + (src.get(key, 0) or 0)
+    dest["total_connected_duration"] = (dest.get("total_connected_duration") or 0.0) + (
+        src.get("total_connected_duration") or 0.0
+    )
+    dest_failures = dest.get("failures")
+    if dest_failures is None:
+        dest_failures = _new_failure_counts()
+        dest["failures"] = dest_failures
+    for key, value in (src.get("failures") or {}).items():
+        dest_failures[key] = dest_failures.get(key, 0) + (value or 0)
+    dest["last_connect_ts"] = _max_ts(dest.get("last_connect_ts"), src.get("last_connect_ts"))
+    dest["last_disconnect_ts"] = _max_ts(dest.get("last_disconnect_ts"), src.get("last_disconnect_ts"))
+    dest["last_message_ts"] = _max_ts(dest.get("last_message_ts"), src.get("last_message_ts"))
+    if src.get("connected"):
+        dest["connected"] = True
+        src_since = src.get("_connected_since")
+        dest_since = dest.get("_connected_since")
+        if dest_since is None or (src_since is not None and src_since < dest_since):
+            dest["_connected_since"] = src_since
+    return dest
+
+
+def _rekey_stats_map(stats_map: dict) -> dict:
+    if not stats_map:
+        return {}
+    rekeyed = {}
+    for client_id, stats in stats_map.items():
+        key = stats.get("client_id") or client_id
+        if key in rekeyed:
+            rekeyed[key] = _merge_client_stats(rekeyed[key], stats)
+        else:
+            rekeyed[key] = _clone_client_stats(stats)
+            rekeyed[key]["client_id"] = key
+    return rekeyed
+
+
+def _stats_from_thread(thread) -> dict:
+    if hasattr(thread, "_get_client_stats_internal"):
+        return thread._get_client_stats_internal()
+    client_id = getattr(thread, "_client_id", None)
+    if not client_id:
+        name = getattr(thread, "name", None)
+        if name:
+            client_id = f"thread-{name}"
+    if not client_id:
+        return {}
+    stats = _new_client_stats(client_id)
+    stats["connected"] = True
+    stats["connects"] = 1
+    started_at = getattr(thread, "_client_started_at", None)
+    if started_at is not None:
+        stats["_connected_since"] = started_at
+    return {client_id: stats}
+
+
 class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.ABCMeta):
     """Single-threaded server that accepts one connection and processes messages in its thread."""
 
@@ -62,6 +360,8 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.AB
         self._stats_lock = threading.Lock()
         self._client_started_at = None
         self._client_id = None
+        self._client_stats = {}
+        self._active_client_id = None
         self._wakeup_r = None
         self._wakeup_w = None
         self._init_wakeup()
@@ -182,24 +482,28 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.AB
                 addr = self.conn.getpeername()
             except OSError:
                 addr = None
+        client_id = _format_client_id(addr)
         with self._stats_lock:
             self._client_started_at = time.monotonic()
-            self._client_id = _format_client_id(addr)
+            self._client_id = client_id
+        _note_connect(self, client_id)
 
     def _clear_client_stats(self):
         with self._stats_lock:
             self._client_started_at = None
             self._client_id = None
+            self._active_client_id = None
 
     def get_client_stats(self) -> dict:
-        """Return connected client count and per-client durations in seconds."""
-        with self._stats_lock:
-            started_at = self._client_started_at
-            client_id = self._client_id
-        if not started_at or not client_id or not self.connected:
-            return {"connected_clients": 0, "clients": {}}
-        duration = time.monotonic() - started_at
-        return {"connected_clients": 1, "clients": {client_id: duration}}
+        """Return per-client stats including connects, messages, failures, and timestamps."""
+        _ensure_stats_state(self)
+        with _stats_guard(self):
+            stats_map = {cid: _clone_client_stats(stats) for cid, stats in self._client_stats.items()}
+        stats_map = _rekey_stats_map(stats_map)
+        now = time.monotonic()
+        clients = {cid: _format_client_stats(stats, now) for cid, stats in stats_map.items()}
+        connected = sum(1 for stats in clients.values() if stats.get("connected"))
+        return {"connected_clients": connected, "clients": clients}
 
     def _accept_client(self) -> bool:
         """Accept an incoming connection; return True when a client connects."""
@@ -226,13 +530,15 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.AB
         while self._is_alive:
             try:
                 obj = self.read_obj()
-                resp_obj = self._process_message(obj)
-                if resp_obj is not None:
-                    logger.debug("sending response (%s)", _response_summary(resp_obj))
-                    self.send_obj(resp_obj)
             except socket.timeout as e:
                 logger.debug("read timeout waiting for client data: %s", e)
+                _note_failure(self, "timeout")
                 continue
+            except jsocket_base.FramingError as e:
+                _note_framing_failure(self, e)
+                logger.debug("framing error (%s): %s", type(e).__name__, e)
+                self._close_connection()
+                break
             except Exception as e:  # pylint: disable=broad-exception-caught
                 # Treat client disconnects as normal; keep logs at info/debug
                 msg = str(e)
@@ -240,8 +546,35 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.AB
                     logger.info("client connection broken, closing connection")
                 else:
                     logger.debug("handler error (%s): %s", type(e).__name__, e)
+                    _note_failure(self, "handler")
                 self._close_connection()
                 break
+            client_id = _extract_client_id(obj)
+            if client_id:
+                _set_client_identity(self, client_id)
+            _note_message_in(self, getattr(self, "_last_read_size", None))
+            try:
+                resp_obj = self._process_message(obj)
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                logger.debug("handler error (%s): %s", type(e).__name__, e)
+                _note_failure(self, "handler")
+                self._close_connection()
+                break
+            if resp_obj is not None:
+                logger.debug("sending response (%s)", _response_summary(resp_obj))
+                try:
+                    self.send_obj(resp_obj)
+                except Exception as e:  # pylint: disable=broad-exception-caught
+                    msg = str(e)
+                    if isinstance(e, RuntimeError) and 'socket connection broken' in msg:
+                        logger.info("client connection broken, closing connection")
+                    else:
+                        logger.debug("send error (%s): %s", type(e).__name__, e)
+                    _note_failure(self, "bad_write")
+                    self._close_connection()
+                    break
+                _note_message_out(self, getattr(self, "_last_send_size", None))
+        _note_disconnect(self)
         self._clear_client_stats()
 
     def run(self):
@@ -277,7 +610,6 @@ class ThreadedServer(threading.Thread, jsocket_base.JsonServer, metaclass=abc.AB
             @retval None 
         """
         self._is_alive = False
-        self._clear_client_stats()
         self._signal_wakeup()
         logger.debug("Threaded Server stopped on %s:%s", self.address, self.port)
 
@@ -296,8 +628,11 @@ class ServerFactoryThread(threading.Thread, jsocket_base.JsonSocket, metaclass=a
         self.conn = None
         jsocket_base.JsonSocket.__init__(self, create_socket=create_socket, **kwargs)
         self._is_alive = False
+        self._stats_lock = threading.Lock()
         self._client_started_at = None
         self._client_id = None
+        self._client_stats = {}
+        self._active_client_id = None
 
     def swap_socket(self, new_sock):
         """ Swaps the existing socket with a new one. Useful for setting socket after a new connection.
@@ -325,6 +660,7 @@ class ServerFactoryThread(threading.Thread, jsocket_base.JsonSocket, metaclass=a
             addr = None
         self._client_id = _format_client_id(addr)
         self._client_started_at = time.monotonic()
+        _note_connect(self, self._client_id)
 
     def run(self):
         """ Should exit when client closes socket conn.
@@ -333,17 +669,50 @@ class ServerFactoryThread(threading.Thread, jsocket_base.JsonSocket, metaclass=a
         while self._is_alive:
             try:
                 obj = self.read_obj()
-                resp_obj = self._process_message(obj)
-                if resp_obj is not None:
-                    logger.debug("sending response (%s)", _response_summary(resp_obj))
-                    self.send_obj(resp_obj)
             except socket.timeout as e:
                 logger.debug("worker read timeout waiting for data: %s", e)
+                _note_failure(self, "timeout")
                 continue
-            except Exception as e:  # pylint: disable=broad-exception-caught
-                logger.info("client connection broken, closing connection: %s", e)
+            except jsocket_base.FramingError as e:
+                _note_framing_failure(self, e)
+                logger.debug("worker framing error (%s): %s", type(e).__name__, e)
                 self._is_alive = False
                 break
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                msg = str(e)
+                if isinstance(e, RuntimeError) and "socket connection broken" in msg:
+                    logger.info("client connection broken, closing connection")
+                else:
+                    logger.debug("worker error (%s): %s", type(e).__name__, e)
+                    _note_failure(self, "handler")
+                self._is_alive = False
+                break
+            client_id = _extract_client_id(obj)
+            if client_id:
+                _set_client_identity(self, client_id)
+            _note_message_in(self, getattr(self, "_last_read_size", None))
+            try:
+                resp_obj = self._process_message(obj)
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                logger.debug("worker handler error (%s): %s", type(e).__name__, e)
+                _note_failure(self, "handler")
+                self._is_alive = False
+                break
+            if resp_obj is not None:
+                logger.debug("sending response (%s)", _response_summary(resp_obj))
+                try:
+                    self.send_obj(resp_obj)
+                except Exception as e:  # pylint: disable=broad-exception-caught
+                    msg = str(e)
+                    if isinstance(e, RuntimeError) and "socket connection broken" in msg:
+                        logger.info("client connection broken, closing connection")
+                    else:
+                        logger.debug("worker send error (%s): %s", type(e).__name__, e)
+                    _note_failure(self, "bad_write")
+                    self._is_alive = False
+                    break
+                _note_message_out(self, getattr(self, "_last_send_size", None))
+        _note_disconnect(self)
         self._close_connection()
         if hasattr(self, "socket"):
             self._close_socket()
@@ -378,6 +747,11 @@ class ServerFactoryThread(threading.Thread, jsocket_base.JsonSocket, metaclass=a
         self._is_alive = False
         logger.debug("ServerFactoryThread stopped (%s)", self.name)
 
+    def _get_client_stats_internal(self) -> dict:
+        _ensure_stats_state(self)
+        with _stats_guard(self):
+            return {cid: _clone_client_stats(stats) for cid, stats in self._client_stats.items()}
+
 
 class ServerFactory(ThreadedServer):
     """Accepts clients and spawns a ServerFactoryThread per connection."""
@@ -398,6 +772,7 @@ class ServerFactory(ThreadedServer):
         self._thread_type = server_thread
         self._threads = []
         self._threads_lock = threading.Lock()
+        self._client_stats_archive = {}
         self._thread_args = kwargs
         self._thread_args.pop('address', None)
         self._thread_args.pop('port', None)
@@ -497,10 +872,42 @@ class ServerFactory(ThreadedServer):
                 t.join()
             self._purge_threads()
 
+    def _archive_thread_stats(self, thread):
+        if getattr(thread, "_stats_archived", False):
+            return
+        stats_map = _stats_from_thread(thread)
+        if not stats_map:
+            thread._stats_archived = True
+            return
+        # Dead threads should never be marked connected in the archive.
+        for stats in stats_map.values():
+            stats["connected"] = False
+            stats["_connected_since"] = None
+        with _stats_guard(self):
+            archive = getattr(self, "_client_stats_archive", None)
+            if archive is None:
+                self._client_stats_archive = {}
+                archive = self._client_stats_archive
+            for client_id, stats in stats_map.items():
+                if client_id not in archive:
+                    archive[client_id] = _clone_client_stats(stats)
+                else:
+                    archive[client_id] = _merge_client_stats(archive[client_id], stats)
+        thread._stats_archived = True
+
     def _purge_threads(self):
-        # Rebuild list to avoid mutating while iterating
+        # Rebuild list to avoid mutating while iterating, archiving stats for finished threads.
         with self._threads_lock:
-            self._threads = [t for t in self._threads if t.is_alive()]
+            alive = []
+            dead = []
+            for t in self._threads:
+                if t.is_alive():
+                    alive.append(t)
+                else:
+                    dead.append(t)
+            self._threads = alive
+        for t in dead:
+            self._archive_thread_stats(t)
 
     def stop(self):
         # Stop accepting and stop all workers
@@ -523,20 +930,29 @@ class ServerFactory(ThreadedServer):
         return len([True for x in threads if x.is_alive()])
 
     def get_client_stats(self) -> dict:
-        """Return connected client count and per-client durations in seconds."""
+        """Return per-client stats including connects, messages, failures, and timestamps."""
         with self._threads_lock:
             threads = list(self._threads)
-        now = time.monotonic()
-        clients = {}
-        active = 0
+        # Archive any finished threads encountered.
         for t in threads:
             if not t.is_alive():
-                continue
-            active += 1
-            started_at = getattr(t, "_client_started_at", None)
-            client_id = getattr(t, "_client_id", None) or f"thread-{t.name}"
-            duration = now - started_at if started_at else 0.0
-            clients[client_id] = duration
-        return {"connected_clients": active, "clients": clients}
+                self._archive_thread_stats(t)
+        alive = [t for t in threads if t.is_alive()]
+        with _stats_guard(self):
+            archive = getattr(self, "_client_stats_archive", {}) or {}
+            combined = {cid: _clone_client_stats(stats) for cid, stats in archive.items()}
+        for t in alive:
+            stats_map = _stats_from_thread(t)
+            for client_id, stats in stats_map.items():
+                existing = combined.get(client_id)
+                if existing is None:
+                    combined[client_id] = _clone_client_stats(stats)
+                else:
+                    combined[client_id] = _merge_client_stats(existing, stats)
+        combined = _rekey_stats_map(combined)
+        now = time.monotonic()
+        clients = {cid: _format_client_stats(stats, now) for cid, stats in combined.items()}
+        connected = sum(1 for stats in clients.values() if stats.get("connected"))
+        return {"connected_clients": connected, "clients": clients}
 
     active = property(_get_num_of_active_threads, doc="number of active threads")

@@ -1,14 +1,16 @@
 """Unit tests to cover error/edge branches without real network I/O."""
+# pylint: disable=protected-access,missing-function-docstring,missing-class-docstring
+# pylint: disable=too-few-public-methods,non-parent-init-called,super-init-not-called
+# pylint: disable=too-many-arguments,too-many-positional-arguments,unused-argument
+# pylint: disable=useless-parent-delegation,too-many-instance-attributes
+# pylint: disable=attribute-defined-outside-init,use-implicit-booleaness-not-comparison
 
 import threading
-import socket
 import struct
 import zlib
 import pytest
 
-import jsocket
-import jsocket.jsocket_base as jsocket_base
-import jsocket.tserver as tserver
+from jsocket import jsocket_base, tserver
 
 
 class FakeSocket:  # pylint: disable=missing-function-docstring
@@ -722,3 +724,4 @@ def test_serverfactory_get_client_stats_active_threads():
     stats = factory.get_client_stats()
     assert stats["connected_clients"] == 2
     assert len(stats["clients"]) == 2
+    assert all(client_stats["connected"] is True for client_stats in stats["clients"].values())

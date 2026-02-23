@@ -72,6 +72,8 @@ class JsonSocket:
         self._last_client_addr = None
         self._is_server = False
         self._is_listening = False
+        self._last_read_size = None
+        self._last_send_size = None
         if create_socket:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.conn = self.socket
@@ -83,6 +85,7 @@ class JsonSocket:
         msg = json.dumps(obj, ensure_ascii=False)
         if self.socket:
             payload = msg.encode('utf-8')
+            self._last_send_size = len(payload)
             if self._max_message_size is not None and len(payload) > self._max_message_size:
                 raise ValueError(f"message exceeds max_message_size ({len(payload)} > {self._max_message_size})")
             checksum = zlib.crc32(payload) & 0xFFFFFFFF
@@ -136,6 +139,7 @@ class JsonSocket:
     def read_obj(self):
         """Read a full message and decode it as JSON, returning a Python object."""
         size, checksum = self._read_header()
+        self._last_read_size = size
         data = self._read(size)
         actual = zlib.crc32(data) & 0xFFFFFFFF
         if actual != checksum:

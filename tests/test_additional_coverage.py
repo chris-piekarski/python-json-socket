@@ -2,6 +2,10 @@
 
 These tests avoid real network I/O by monkeypatching/stubbing where possible.
 """
+# pylint: disable=protected-access,missing-function-docstring,missing-class-docstring
+# pylint: disable=too-few-public-methods,non-parent-init-called,super-init-not-called
+# pylint: disable=too-many-arguments,too-many-positional-arguments,unused-argument
+# pylint: disable=attribute-defined-outside-init,useless-return
 
 import threading
 import time
@@ -9,7 +13,7 @@ import socket
 import pytest
 
 import jsocket
-import jsocket.tserver as tserver
+from jsocket import jsocket_base, tserver
 
 
 def test_client_connect_failure_returns_false(monkeypatch):
@@ -19,7 +23,7 @@ def test_client_connect_failure_returns_false(monkeypatch):
         raise OSError("boom")
 
     # Short-circuit sleeps so the test is fast
-    monkeypatch.setattr(jsocket.jsocket_base.time, "sleep", lambda *_: None)
+    monkeypatch.setattr(jsocket_base.time, "sleep", lambda *_: None)
     monkeypatch.setattr(socket.socket, "connect", fail_connect, raising=True)
 
     try:
@@ -74,10 +78,10 @@ def test_client_connect_recreates_closed_socket_without_backoff(monkeypatch):
     def no_sleep(*args, **kwargs):  # pylint: disable=unused-argument
         raise AssertionError("unexpected connect backoff sleep")
 
-    monkeypatch.setattr(jsocket.jsocket_base.socket, "socket", fake_socket, raising=True)
-    monkeypatch.setattr(jsocket.jsocket_base.time, "sleep", no_sleep, raising=True)
+    monkeypatch.setattr(jsocket_base.socket, "socket", fake_socket, raising=True)
+    monkeypatch.setattr(jsocket_base.time, "sleep", no_sleep, raising=True)
 
-    client = jsocket.jsocket_base.JsonClient.__new__(jsocket.jsocket_base.JsonClient)
+    client = jsocket_base.JsonClient.__new__(jsocket_base.JsonClient)
     client.socket = ClosedSocket()
     client.conn = client.socket
     client._recv_timeout = 0.25
